@@ -1,0 +1,94 @@
+import itertools
+
+import numpy as np
+import pytest
+
+from metadrive_rl.planner import (
+    ACTIONS,
+    NUM_ACTIONS,
+    HighLevelAction,
+    Mode,
+    ModeConditionedPlanner,
+)
+
+STRAIGHT_ROUTE = np.stack([np.linspace(0, 120, 25), np.zeros(25)], axis=1)
+theta = np.linspace(0, np.pi / 2, 40)
+LEFT_CURVE_ROUTE = np.stack([30 * np.sin(theta), 30 * (1 - np.cos(theta))], axis=1)
+
+
+@pytest.fixture
+def planner():
+    return ModeConditionedPlanner()
+
+
+def test_action_space_roundtrip():
+    assert NUM_ACTIONS == len(set(ACTIONS)) == 12
+    for i, a in enumerate(ACTIONS):
+        assert a.index == i
+        assert HighLevelAction.from_text(a.to_text()) == a
+
+
+def test_speed_target_validation():
+    with pytest.raises(ValueError):
+        HighLevelAction(Mode.BRAKE, 5.0)
+    with pytest.raises(ValueError):
+        HighLevelAction(Mode.CRUISE)
+
+
+def test_modes_produce_distinct_trajectories(planner):
+    """Hard requirement from the guide: switching modes changes the plan."""
+    plans = planner.plan_all(ACTIONS, speed_mps=8.0, accel_mps2=0.0, route_xy=STRAIGHT_ROUTE)
+    for p, q in itertools.combinations(plans, 2):
+        gap = np.max(np.linalg.norm(p.xy - q.xy, axis=1))
+        assert gap > 0.3, (p.action.to_text(), q.action.to_text(), gap)
+
+
+def test_longitudinal_ordering(planner):
+    v0 = 8.0
+    final = {
+        m: planner.plan(HighLevelAction(m, 10.0 if m == Mode.CRUISE else None),
+                        v0, 0.0, STRAIGHT_ROUTE)
+        for m in (Mode.CRUISE, Mode.FOLLOW, Mode.YIELD, Mode.BRAKE)
+    }
+    dist = {m: p.xy[-1, 0] for m, p in final.items()}
+    assert dist[Mode.CRUISE] > dist[Mode.FOLLOW] > dist[Mode.YIELD] > dist[Mode.BRAKE]
+    assert final[Mode.BRAKE].speed[-1] == pytest.approx(0.0, abs=1e-6)
+    assert final[Mode.FOLLOW].speed.max() <= v0 + 1e-6
+
+
+def test_lane_change_shifts_laterally(planner):
+    left = planner.plan(HighLevelAction(Mode.CHANGE_LANE_LEFT, 10.0), 10.0, 0.0, STRAIGHT_ROUTE)
+    right = planner.plan(HighLevelAction(Mode.CHANGE_LANE_RIGHT, 10.0), 10.0, 0.0, STRAIGHT_ROUTE)
+    assert left.xy[-1, 1] > 2.5 and right.xy[-1, 1] < -2.5
+    assert left.lane_offset_target_m == pytest.approx(3.5)
+    # Lane offset is clamped to one lane each side.
+    assert planner.next_lane_offset(left.action, 3.5) == pytest.approx(3.5)
+
+
+def test_committed_offset_is_kept(planner):
+    plan = planner.plan(HighLevelAction(Mode.CRUISE, 10.0), 10.0, 0.0, STRAIGHT_ROUTE, 3.5)
+    assert plan.xy[-1, 1] == pytest.approx(3.5, abs=0.05)
+
+
+def test_limits_respected(planner):
+    # Start well before the bend so the speed cap has room to act.
+    approach = np.vstack([np.stack([np.linspace(-60, -1, 30), np.zeros(30)], axis=1),
+                          LEFT_CURVE_ROUTE + [40.0, 0.0]])
+    for route in (STRAIGHT_ROUTE, approach, None):
+        for plan in planner.plan_all(ACTIONS, 12.0, 0.0, route):
+            assert np.all(np.isfinite(plan.xy))
+            assert np.all(plan.speed >= 0)
+            assert np.max(np.abs(plan.accel)) <= 4.0 + 1e-6
+            assert plan.lateral_accel_max < 4.0, plan.action.to_text()
+
+
+def test_curvature_caps_speed(planner):
+    plan = planner.plan(HighLevelAction(Mode.CRUISE, 15.0), 15.0, 0.0, LEFT_CURVE_ROUTE)
+    assert plan.flags["speed_capped"]
+    assert plan.speed[-1] < 15.0
+
+
+def test_follows_curved_route(planner):
+    plan = planner.plan(HighLevelAction(Mode.CRUISE, 5.0), 5.0, 0.0, LEFT_CURVE_ROUTE)
+    assert plan.xy[-1, 1] > 1.0  # bends left with the route
+    assert plan.heading[-1] > 0.2

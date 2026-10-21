@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Large artifacts stay outside Git; only manifests/checksums are versioned.
+runs/
+outputs/
+checkpoints/
+data/cache/
+data/rollouts/
+*.pt
+*.safetensors
+*.mp4
+*.usdz
+*.asl
+wandb/
+mlruns/
+.env
