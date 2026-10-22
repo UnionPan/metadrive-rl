@@ -25,6 +25,9 @@ TRAIN_EXTRA = 48
 # Closed-loop evaluation splits, frozen before any closed-loop tuning: 4 scenes
 # could not separate policies (scene-level bootstrap CIs spanned [0, 0.75]).
 CLOSED_LOOP = {"val_cl": 16, "test_cl": 16}
+# Powered paired comparison (scene-level paired SD ~0.26 between behaviourally
+# different policies needs ~100 scenes for +-0.05); frozen before first use.
+EVAL_BIG = 96
 DEVELOPMENT_SCENES = ["clipgt-01d503d4-449b-46fc-8d78-9085e70d3554"]
 
 
@@ -50,7 +53,7 @@ def main() -> None:
         "test": pool[n_train + SIZES["val"] : end_test],
     }
     start = end_test + TRAIN_EXTRA
-    for name, size in CLOSED_LOOP.items():
+    for name, size in {**CLOSED_LOOP, "eval_big": EVAL_BIG}.items():
         chosen[name] = pool[start : start + size]
         start += size
     splits = {
