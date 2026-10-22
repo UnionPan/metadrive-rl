@@ -77,11 +77,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("runs", nargs="+", help="run directory, optionally run_dir=label")
     parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--common-scenes",
+        action="store_true",
+        help="restrict every run to scenes that completed in all runs (matched comparison)",
+    )
     args = parser.parse_args()
     runs = {}
     for spec in args.runs:
         path, _, label = spec.partition("=")
         runs[label or Path(path).name] = rollouts(Path(path))
+    if args.common_scenes:
+        common = set.intersection(*({r["scene"] for r in rows} for rows in runs.values()))
+        runs = {k: [r for r in rows if r["scene"] in common] for k, rows in runs.items()}
     text = table(runs)
     print(text)
     if args.out:

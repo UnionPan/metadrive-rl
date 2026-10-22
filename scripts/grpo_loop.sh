@@ -10,7 +10,8 @@
 # Env:   TEMPERATURE (1.0), KL_COEF (0.05), PROGRESS_WEIGHT (0.2), SPLIT (train),
 #        SPLITS (splits file, e.g. a training subset), STEPS (sim steps per episode, 200),
 #        TOPOLOGY / METADRIVE_RENDERER_ADDRS (see run_episode.sh),
-#        EVAL_SPLIT (if set, evaluate each new checkpoint greedily on it), EVAL_ROLLOUTS (2)
+#        EVAL_SPLIT (if set, evaluate each new checkpoint greedily on it), EVAL_ROLLOUTS (2),
+#        SPLIT_CYCLE (space-separated split names; iteration i samples the (i-1) mod n-th)
 set -euo pipefail
 
 SFT=$(realpath "${1:?usage: grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]}")
@@ -32,7 +33,13 @@ decision_period_s: 0.5
 feature_dir: $dir/features
 YAML
   start=$(date +%s)
-  "$HERE/evaluate.sh" "$dir/policy.yaml" "${SPLIT:-train}" "$dir/rollouts" "$GROUP" \
+  split=${SPLIT:-train}
+  if [[ -n "${SPLIT_CYCLE:-}" ]]; then
+    read -r -a cycle <<< "$SPLIT_CYCLE"
+    split=${cycle[$(( (it - 1) % ${#cycle[@]} ))]}
+  fi
+  echo "$split" > "$dir/split.txt"
+  "$HERE/evaluate.sh" "$dir/policy.yaml" "$split" "$dir/rollouts" "$GROUP" \
     eval.video.render_video=False runtime.simulation_config.n_sim_steps="${STEPS:-200}" \
     > "$dir/collect.log" 2>&1
   collected=$(date +%s)

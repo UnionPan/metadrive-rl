@@ -5,6 +5,8 @@
 # Usage: scripts/evaluate.sh <policy-spec> <split> <out-dir> [rollouts-per-scene] [overrides...]
 # Needs: scripts/serve_gsplat_renderer.sh running (METADRIVE_RENDERER_ADDRS).
 # Then:  python -m metadrive_rl.evaluation.summarize <out-dir>
+# Rollouts that fail in the simulator (e.g. CATK finds no map near the ego) are
+# excluded from aggregation; compare policies with summarize --common-scenes.
 set -uo pipefail
 
 POLICY=${1:?usage: evaluate.sh <policy-spec> <split> <out-dir> [rollouts]}
@@ -25,4 +27,4 @@ print(','.join(s['scene_id'] for s in yaml.safe_load(open(sys.argv[1]))[sys.argv
 "$HERE/run_episode.sh" "$OUT" "$POLICY" \
   "scenes.scene_ids=[$SCENES]" \
   runtime.simulation_config.n_rollouts="$ROLLOUTS" \
-  trafficsim=catk "$@"
+  trafficsim=catk eval.allow_aggregation_with_failed_rollouts=True "$@"
