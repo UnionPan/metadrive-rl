@@ -137,7 +137,7 @@ takes over agents within 100 m at handover (1.7 s); the rest are held static.
 The 343 m pose difference seen between replay and CATK runs is such frozen
 agents on the opposite carriageway.
 
-## M2 — SFT (in progress)
+## M2 — SFT (exit gate met; no closed-loop gain)
 
 - Frozen splits: `configs/evaluation/splits.yaml`, public_2604 seed 0,
   16 train / 4 val / 4 test (the development scene is in train). 24 scenes, 40 GB.
@@ -206,6 +206,14 @@ further (−15% regret vs. the best constant action), an early data point for
 H1 (history helps). Caveat: models were selected and compared on the same 4
 validation scenes; claims go to the test split. The closed-loop checkpoint is
 fixed in advance as seed 0 (val regret 0.682), not the best seed.
+
+**M2 exit gate: closed loop through the driver API.** SFT seed 0 (fixed in
+advance) runs as `policy: {type: neural}` in the AlpaSim plugin with DINOv2-base
+and its 3-decision feature stack. Closed loop on the 4 val scenes (CATK,
+2 rollouts each, `reports/m2_val_closed_loop.md`): rule 0.25, always-FOLLOW
+0.064, SFT 0.088 mean score with scene-level CIs spanning ~[0, 0.75]; on the 16
+val_cl scenes (M4 section) SFT is indistinguishable from the baselines. The
+offline regret gain does not translate into measurable closed-loop gains.
 
 ## M3 — preference optimisation (in progress)
 
