@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Clone AlpaSim at the pinned commit, apply local patches, build its uv
-# workspace, and install this package into it as a driver plugin.
+# Clone AlpaSim at the pinned commit, apply local patches, and build its uv
+# workspace (protos, services, Alpamayo driver plugins).
 #
 # Usage: scripts/setup_alpasim.sh [alpasim-dir]   (default ~/ext/alpasim)
 set -euo pipefail
@@ -24,6 +24,4 @@ done
 
 # setup_local_env.sh compiles protos and syncs the workspace (needs uv + cargo).
 bash -c 'source setup_local_env.sh'
-uv pip install -e "$REPO" pytest
-uv run alpasim-info | grep -q metadrive
 echo "AlpaSim ready at $ALPASIM_DIR"

@@ -1,7 +1,7 @@
 [project]
 name = "metadrive-rl"
 version = "0.1.0"
-description = "Mode-conditioned VLM post-training (SFT, DPO, GRPO) in closed-loop AlpaSim driving"
+description = "AlpaSim / Alpamayo workspace for 4x Quadro RTX 8000 (Turing); gsplat sensorsim renderer"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
@@ -12,19 +12,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-train = ["transformers>=4.45", "peft>=0.13", "pandas>=2.0", "pyarrow>=15"]
-viz = ["matplotlib>=3.8", "imageio>=2.34", "imageio-ffmpeg>=0.5"]
 # gsplat renderer service; see scripts/setup_render_env.sh for the torch/gsplat pins.
 render = ["gsplat==1.5.3", "grpcio", "protobuf>=4,<5", "scipy", "pillow"]
 dev = ["pytest>=8", "ruff>=0.6"]
-
-# Registered with AlpaSim's plugin registry so its stock driver server can
-# load our policy by name (`model_type: metadrive`).
-[project.entry-points."alpasim.models"]
-metadrive = "metadrive_rl.alpasim.model:MetaDriveModel"
-
-[project.entry-points."alpasim.configs"]
-metadrive = "metadrive_rl.alpasim.configs"
 
 [build-system]
 requires = ["setuptools>=68"]
@@ -32,9 +22,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-"metadrive_rl.alpasim.configs" = ["**/*.yaml"]
 
 [tool.ruff]
 line-length = 100
