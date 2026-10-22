@@ -161,3 +161,11 @@ def test_frame_stack_context_reaches_the_policy():
     for k in range(11):  # decisions at steps 0, 5, 10
         model.predict(_inputs(poses, 10 + k, k * 100_000))
     assert seen == [[1, 1, 0, 0, 0, 0], [2, 2, 1, 1, 0, 0], [3, 3, 2, 2, 1, 1]]
+
+
+def test_dense_images_saved_every_step(tmp_path):
+    model = _model("rule", image_dir=str(tmp_path), image_every_step=True, decision_period_s=0.5)
+    poses = [(0, object())]
+    recs = [_record(model.predict(_inputs(poses, 10 + k, k * 100_000))) for k in range(6)]
+    saved = sorted(p.stem for p in tmp_path.glob("*.jpg"))
+    assert saved == sorted(f"{r['decision_id']}_{r['step']}" for r in recs)

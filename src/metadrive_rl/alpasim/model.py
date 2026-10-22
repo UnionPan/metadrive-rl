@@ -263,12 +263,21 @@ class MetaDriveModel(BaseTrajectoryModel):
             if self.feature_dir is not None and obs.features is not None:
                 # Single-frame features; batches rebuild the stack from these.
                 np.save(self.feature_dir / f"{state.decision_id}.npy", state.history[0])
-            if self.image_dir is not None and obs.image is not None:
+            if (
+                self.image_dir is not None
+                and obs.image is not None
+                and not self.spec.image_every_step
+            ):
                 Image.fromarray(obs.image).save(
                     self.image_dir / f"{state.decision_id}.jpg", quality=95
                 )
+
         decision = state.decision
         assert decision is not None
+        if self.image_dir is not None and obs.image is not None and self.spec.image_every_step:
+            Image.fromarray(obs.image).save(
+                self.image_dir / f"{state.decision_id}_{state.step}.jpg", quality=95
+            )
 
         plans = self.planner.plan_all(
             ACTIONS,

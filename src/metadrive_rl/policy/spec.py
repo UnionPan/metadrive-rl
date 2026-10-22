@@ -27,6 +27,9 @@ class PolicySpec:
     # When set, the camera image seen at each decision is saved here as
     # <decision_id>.jpg, so datasets can be re-encoded with other backbones.
     image_dir: str | None = None
+    # Save the image at every driver call (named <decision_id>_<step>.jpg)
+    # instead of only at decisions; for dense perception datasets.
+    image_every_step: bool = False
     planner: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
