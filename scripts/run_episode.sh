@@ -10,8 +10,10 @@
 # Env:  ALPASIM_DIR (default ~/ext/alpasim)
 #       DRIVER_SOURCE (metadrive_external_renderer | metadrive_no_render)
 #       DRIVER_GPU (default 2; GPU 0 runs physics/CATK, GPU 1 the renderer)
-#       TOPOLOGY (1gpu | metadrive_4gpu | metadrive_4gpu_wide; see the renderer
-#                 addresses in the metadrive_external_renderer preset)
+#       TOPOLOGY (1gpu | metadrive_4gpu | metadrive_4gpu_wide | metadrive_single; see
+#                 the renderer addresses in the metadrive_external_renderer preset).
+#                 metadrive_single puts physics and CATK on METADRIVE_STACK_GPU;
+#                 pair it with DRIVER_GPU and a renderer on the same GPU.
 #       DRIVER_PORT (6789), BASEPORT (6000): give each concurrently running stack its
 #                 own; the Docker Compose project name is derived from <log-dir>
 #       METADRIVE_RENDERER_ADDRS (YAML list, default [localhost:46100])
