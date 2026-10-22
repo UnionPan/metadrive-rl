@@ -430,21 +430,78 @@ history-dependent ambiguity; the meaningful test needs history-sensitive
 scenarios (aliasing, occlusion, changing traffic behaviour) evaluated in
 closed loop.
 
+## Lead-vehicle perception and speed governor (in progress)
+
+**Failure mode.** On val_cl, 38 of 40 at-fault collisions across rule,
+always-FOLLOW, SFT and GRPO-it8 are `collision_front` (2 lateral, rule only):
+the ego drives into the car ahead. The cause is structural: no input carries
+the distance to a lead vehicle, and FOLLOW holds the current speed. Neither
+imitation nor GRPO can learn to keep a gap they cannot observe. The demo GIF
+shows the same thing.
+
+**Labels.** `metadrive_rl.data.lead_gap`: bumper-to-bumper gap to the nearest
+actor ahead within a ±1.6 m corridor, from logged actor poses and the scene's
+cuboid sizes (60 m = no lead). These labels are privileged; they train a
+perception head and never reach the policy.
+
+**Camera gap head** (`metadrive_rl.perception.lead_gap`): MLP on frozen
+features + ego speed. Trained on expert_v2 decision frames (2 Hz, 4 val scenes,
+3 seeds):
+
+| features | val MAE (m) | MAE, lead < 30 m | recall, lead < 10 m | dangerous miss (lead < 10 m, predicted > 20 m) |
+|---|---|---|---|---|
+| DINOv2-base pooled, 3 frames | 12.9 ± 0.2 | 21.2 ± 1.4 | 0.49 | 0.50 |
+| DINOv2-base 3×4 grid, 1 frame | 12.8 ± 0.3 | 11.2 ± 1.0 | 0.66 | 0.25 |
+| DINOv2-base 3×4 grid, 3 frames | 19.9 ± 4.7 | 39 ± 15 | 0.25 | 0.75 (unstable) |
+
+Pooled features lose where things are in the image; keeping a coarse
+spatial grid halves the near-lead error. A 25% dangerous-miss rate is still
+too high to brake on, and the expert data contains few close-lead frames.
+
+**Dense perception data** (`scripts/collect_dense.sh`,
+`metadrive_rl.data.build_gap_dataset`): one camera frame per 0.1 s step
+(`image_every_step`) over the 68 train+val scenes, from (a) expert force-GT
+replays and (b) SFT driving in closed loop under CATK. Closed-loop driving
+reaches the close-lead and near-collision states the governor must recognise.
+The expert run is collecting, on its own stack (driver 6792, renderer 46120
+on GPU 2). A first check of the builder on 3 scenes gave 597 frames, 14% with a
+lead under 10 m.
+
+**Speed governor** (`planner/trajectory.py`, `PolicySpec.gap_head`): given a
+perceived gap, every mode except BRAKE is capped at
+`min(sqrt(2 b g), g / T)` on the free gap `g` beyond a 2 m standstill
+distance (b = 3 m/s², T = 1.5 s). Within the horizon the lead is assumed
+stationary; the plan is recomputed every 0.1 s with a fresh camera estimate.
+The planner uses whichever acceleration is lower, the mode's or the
+governor's. Plans without a gap are unchanged. Unit tests: from 5–20 m/s it stops behind a
+stationary lead within 2–3 m of the 4 m/s² physical limit, and it settles at
+s0 + T·v behind a moving lead. The decision record logs the estimate
+(`lead_gap_est_m`), so closed-loop perception error can be measured from the
+logs.
+
+This is a hand-designed prior, so the evaluation must separate it from the
+learned policy: each policy with and without the governor, plus
+always-FOLLOW + governor, on matched scenes.
+
 ## Tests
 
-- `pytest` in the AlpaSim venv: planner, plugin, labels, SFT/DPO/GRPO
-  (27 passed, renderer test skipped there).
+- `pytest` in the AlpaSim venv: planner (incl. governor), plugin, labels,
+  lead-gap labels, SFT/DPO/GRPO (42 passed, renderer test skipped there).
 - `pytest tests/test_gsplat_render.py` in `metadrive-render` with
   `METADRIVE_TEST_USDZ` set: renders vs. photo, resolution scaling.
 
 ## Next actions
 
-1. Larger frozen closed-loop evaluation set (~100 scenes, seeded, disjoint
-   from all splits) and paired SFT vs GRPO comparison with 2–3 rollouts each;
-   test_cl used once at the end.
-2. GRPO: lower learning rate (clip fraction stays ~0.4) and more iterations
-   once the evaluation can resolve ±0.05.
-3. M3 branch preferences (`scripts/collect_branches.sh`) and DPO on them.
-4. Investigate CATK's policy-dependent "no map geometry" aborts.
-5. AIS: history-sensitive closed-loop scenarios; offline results are null.
-6. Demo videos (`metadrive_rl.visualization.compare`).
+1. Lead perception: finish dense collection (expert, then SFT closed loop),
+   build `gap_dense`, extract grid features, retrain the gap head with 8
+   held-out train scenes; target a dangerous-miss rate well below 25%.
+   DINOv3 grid features once access to the gated weights is granted.
+2. Governor ablation on matched val_cl scenes: {always-FOLLOW, SFT, GRPO-it8}
+   × {no governor, camera-gap governor}, 2 rollouts each; read the logged
+   estimate against the true gap for closed-loop perception error.
+3. Powered SFT vs GRPO-it8 comparison on `eval_big` (96 scenes, running via
+   `scripts/eval_powered.sh`), summarised with `--common-scenes`.
+4. GRPO continuation from it8 at LR 5e-5 (`runs/grpo/launch_cont.sh`, starts
+   when branch collection frees its renderers).
+5. M3: branch DPO once val_cl branches finish (`branch_prefs` → `dpo --pairs`).
+6. Learnable headway (FOLLOW@T actions) only if the fixed governor helps.
