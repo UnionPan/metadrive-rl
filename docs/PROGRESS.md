@@ -412,6 +412,18 @@ within ±0.05. The suggestive +0.045 on val_cl was noise. GRPO bought a little
 more progress, not more safety, consistent with the policy having no input
 that could avoid the dominant (rear-end) failure.
 
+**GRPO continuation** (`runs/grpo/cont`): 8 more iterations from it8 at
+LR 5e-5, same subset cycle. On-policy reward on the same subset four
+iterations apart changed by +0.09, +0.03, −0.01, −0.00 (noise level; KL to
+SFT 0.12–0.20). Not evaluated further, given the powered null result above.
+
+**GRPO with governor v2 in the loop** (`runs/grpo/gov2`, running): the main
+GRPO recipe (from SFT seed 0, 8 iterations, four-subset cycle, groups of 4,
+12 s episodes, reward = score + 0.2 × progress), with the camera governor
+active during sampling and evaluation (`POLICY_EXTRA`). Question: with the
+car ahead guarded by the prior, can RL find progress-vs-safety trade-offs
+the policy alone cannot?
+
 **Statistical power of the closed-loop evaluation.** From paired per-scene
 score differences on val_cl: policies that behave alike (SFT vs always-FOLLOW:
 paired SD 0.043) are resolved by a few scenes, but behaviourally different
@@ -714,16 +726,16 @@ GPU 0, and batches 2–3 on the 4-GPU stack once the SFT/GRPO pass releases it.
 
 ## Next actions
 
-1. Lead perception: finish dense collection (expert, then SFT closed loop),
-   build `gap_dense`, extract grid features, retrain the gap head with 8
-   held-out train scenes; target a dangerous-miss rate well below 25%.
-   DINOv3 grid features once access to the gated weights is granted.
-2. Governor ablation on matched val_cl scenes: {always-FOLLOW, SFT, GRPO-it8}
-   × {no governor, camera-gap governor}, 2 rollouts each; read the logged
-   estimate against the true gap for closed-loop perception error.
-3. Powered SFT vs GRPO-it8 comparison on `eval_big` (96 scenes, running via
-   `scripts/eval_powered.sh`), summarised with `--common-scenes`.
-4. GRPO continuation from it8 at LR 5e-5 (`runs/grpo/launch_cont.sh`, starts
-   when branch collection frees its renderers).
-5. M3: branch DPO once val_cl branches finish (`branch_prefs` → `dpo --pairs`).
-6. Learnable headway (FOLLOW@T actions) only if the fixed governor helps.
+1. eval_big governor pass (running; batches 0–1 on GPU 0, 2–3 on the 4-GPU
+   stack): always-FOLLOW vs always-FOLLOW + v2, SFT vs SFT + v2, paired on
+   identical scenes. This decides the governor claim.
+2. GRPO + governor (running): compare it8 + governor against SFT + governor
+   (val_cl first, then eval_big).
+3. M3: branch DPO on eval_big (its val_cl number used val_cl for epoch selection).
+4. Perception: DINOv3 grid features when the gated weights are granted
+   (`dinov3-base-grid` is registered); a finer grid or attention head if
+   close-range bias remains the limiter.
+5. Lateral failures (16 of 38 val_cl front collisions: parked cars in narrow
+   streets) need lateral perception or a nudge action; out of scope for
+   the speed governor.
+6. test_cl, once, at the end.
