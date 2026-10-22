@@ -207,6 +207,25 @@ H1 (history helps). Caveat: models were selected and compared on the same 4
 validation scenes; claims go to the test split. The closed-loop checkpoint is
 fixed in advance as seed 0 (val regret 0.682), not the best seed.
 
+## M3 — preference optimisation (in progress)
+
+**DPO on ADE-derived preferences — negative result.** Pairs (5902): preferred =
+lowest-ADE candidate, rejected = candidates ≥ 1 m worse; reference and init =
+SFT seed 0 (val regret 0.682). Three DPO seeds each:
+
+| Setting | Val regret (m) | KL to ref | Train pair acc. |
+|---|---|---|---|
+| β 0.1, lr 1e-4, 100 epochs | 1.77–1.85 (rises from epoch 1) | 0.70 | 0.99 |
+| β 1, lr 1e-5, 60 epochs | 0.752 ± 0.019 | 0.22 | 0.97 |
+| β 5, lr 1e-5, 60 epochs | 0.791 ± 0.061 | 0.12 | 0.97 |
+
+These preferences carry the same information as SFT's ADE-regression targets,
+so DPO can only overfit them. Preference optimisation needs a *new* signal:
+next step is simulator-verified preferences from matched-state branches
+(force-GT to a branch time, then alternative actions under CATK, ranked by
+AlpaSim's at-fault/offroad and progress outcomes). These are simulator-derived
+preferences, not RLHF.
+
 ## Tests
 
 - `pytest` in the AlpaSim venv: planner, plugin, labels, SFT/DPO/GRPO

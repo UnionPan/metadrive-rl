@@ -69,9 +69,9 @@ def main() -> None:
     policy, ckpt = load_head(args.sft, device)
     reference, _ = load_head(args.sft, device)
     reference.eval().requires_grad_(False)
-    encoder = ckpt["encoder"]
-    train = load_split(args.data, "train", encoder, device)
-    val = load_split(args.data, "val", encoder, device)
+    encoder, context = ckpt["encoder"], ckpt.get("context", 1)
+    train = load_split(args.data, "train", encoder, device, context)
+    val = load_split(args.data, "val", encoder, device, context)
     pairs = preference_pairs(train["ade"], args.margin, args.pairs_per_decision)
     with torch.no_grad():
         ref_logp = F.log_softmax(reference(train["features"], train["state"]), -1)
@@ -109,12 +109,13 @@ def main() -> None:
             if row["val"]["regret_mean_m"] < best[0]:
                 best = (row["val"]["regret_mean_m"], row)
                 save_checkpoint(args.out / "best.pt", policy, encoder,
-                                f"dpo:{args.out.name}:e{epoch + 1}", {"metrics": row})
+                                f"dpo:{args.out.name}:e{epoch + 1}",
+                                {"metrics": row, "context": context})
     summary = {"sft_val": initial["val"], "best": best[1], "pairs": len(pairs),
                "seconds": round(time.time() - start, 1)}
     if not (args.out / "best.pt").exists():  # DPO never beat the SFT start
         save_checkpoint(args.out / "best.pt", reference, encoder,
-                        f"dpo:{args.out.name}:sft-init", {"metrics": initial})
+                        f"dpo:{args.out.name}:sft-init", {"metrics": initial, "context": context})
     (args.out / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))
 
