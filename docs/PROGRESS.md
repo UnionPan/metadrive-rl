@@ -245,6 +245,25 @@ small batch because all rollouts finish together and their evaluation runs
 after the last step (with 4 slots it overlapped with the next batch). Larger
 batches (GRPO: 64 rollouts) amortise this.
 
+**GRPO smoke run** (`scripts/grpo_loop.sh`, `runs/grpo/smoke/iterations.jsonl`):
+SFT seed 0 as init and reference; 16 fixed training scenes (first 16 of the
+train split), groups of 4 rollouts per scene, 12 s episodes, temperature 1.0,
+`metadrive_4gpu`, reward = AlpaSim score + 0.2 × progress.
+
+| Iteration | Rollouts | Decisions | Mean reward (train, on-policy) | Collect | Update | Rollouts/h | KL to ref | Entropy | Clip frac. |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 64 | 1536 | 0.560 | 1036 s | 11 s | 222 | 0.070 | 0.80 | 0.40 |
+| 2 | 64 | 1536 | 0.603 | 975 s | 11 s | 236 | 0.087 | 0.75 | 0.32 |
+
+The loop ran collection → immutable batch → update twice without
+intervention, with the sampled actions' logged log-probabilities and correct
+policy versions (iteration 2's batch was sampled by `grpo:smoke:it1`). One
+group had zero reward variance in iteration 2. The reward change is on-policy
+training data and within noise; not a result. Changes after the smoke run:
+floor the group reward std at 0.05 (small groups were amplified), 2 update
+epochs instead of 4 (clip fraction 0.3–0.4), optional greedy evaluation of
+every checkpoint on a held-out split.
+
 **Evaluation noise: CATK samples.** Reactive traffic draws each agent's next
 motion token from the top-5 at temperature 1.0, so the same deterministic
 policy can get different outcomes in different runs (rule policy: at-fault
