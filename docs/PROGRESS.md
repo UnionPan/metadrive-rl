@@ -280,8 +280,21 @@ falls. The policy changes substantially. On expert val states, greedy
 CRUISE@10 goes from 5% (SFT) to ~50%, FOLLOW stays at 47–58%, and BRAKE,
 YIELD and CRUISE@15 mostly disappear. Caveat: epoch selection uses val_cl
 pairs, so a val_cl closed-loop score for DPO is mildly optimistic. A clean
-comparison needs eval_big or test_cl. Closed-loop val_cl evaluation of seed 0
-is running on a single-GPU stack (GPU 1, `metadrive_single` topology).
+comparison needs eval_big or test_cl.
+
+Closed loop, val_cl, 2 rollouts, seed 0, on the 11 scenes every policy completed:
+
+| run | score | pass rate | at-fault collision | progress | distance (m) |
+|---|---|---|---|---|---|
+| SFT | 0.504 [0.274, 0.734] | 0.591 | 0.409 | 0.668 | 81 |
+| GRPO-it8 | 0.549 [0.277, 0.818] | 0.636 | 0.364 | 0.673 | 82 |
+| branch DPO | 0.541 [0.268, 0.814] | 0.545 | 0.455 | 0.758 | 98 |
+
+Paired DPO − SFT: score +0.037 [−0.106, +0.176], at-fault collision
++0.045 [−0.136, +0.273], progress +0.090 [+0.001, +0.209]. Outcomes differ
+in only 3–4 scenes. DPO drives further. Without a lead-gap input, the
+faster CRUISE@10 choices do not reduce rear-end collisions, so the
+preferences buy progress, not safety. No score claim at this sample size.
 
 ## M4 — distributed RLVR (in progress)
 
