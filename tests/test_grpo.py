@@ -22,14 +22,30 @@ def test_update_moves_probability_toward_positive_advantage(tmp_path):
     advantage = np.where(actions == 3, 1.0, -0.2)  # action 3 led to better outcomes
     batch = tmp_path / "batch"
     batch.mkdir()
-    pl.DataFrame({"rollout_uuid": ["r"] * n, "time_us": np.arange(n),
-                  "action": actions, "behaviour_logp": logp[np.arange(n), actions],
-                  "advantage": advantage, "state": state.tolist()}).write_parquet(
-        batch / "decisions.parquet")
+    pl.DataFrame(
+        {
+            "rollout_uuid": ["r"] * n,
+            "time_us": np.arange(n),
+            "action": actions,
+            "behaviour_logp": logp[np.arange(n), actions],
+            "advantage": advantage,
+            "state": state.tolist(),
+        }
+    ).write_parquet(batch / "decisions.parquet")
     np.save(batch / "features.npy", feats)
 
-    result = update(batch, tmp_path / "init.pt", tmp_path / "init.pt", tmp_path / "new.pt",
-                    clip=0.2, kl_coef=0.01, epochs=10, lr=1e-3, batch_size=128, version="it1")
+    result = update(
+        batch,
+        tmp_path / "init.pt",
+        tmp_path / "init.pt",
+        tmp_path / "new.pt",
+        clip=0.2,
+        kl_coef=0.01,
+        epochs=10,
+        lr=1e-3,
+        batch_size=128,
+        version="it1",
+    )
     new, ckpt = load_head(tmp_path / "new.pt", torch.device("cpu"))
     with torch.no_grad():
         p_old = np.exp(logp)[:, 3].mean()

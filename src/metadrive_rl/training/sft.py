@@ -51,14 +51,18 @@ def stack_context(df: pl.DataFrame, feats: np.ndarray, context: int) -> np.ndarr
     return out
 
 
-def load_split(data_dir: Path, split: str, encoder: str, device: torch.device,
-               context: int = 1) -> dict:
+def load_split(
+    data_dir: Path, split: str, encoder: str, device: torch.device, context: int = 1
+) -> dict:
     df = pl.read_parquet(data_dir / f"{split}.parquet")
     feats = np.load(data_dir / f"{split}.{encoder}.npy")
     assert len(feats) == len(df), "features out of sync with dataset rows"
     feats = stack_context(df, feats, context)
-    for name, arr in (("features", feats), ("state", np.array(df["state"].to_list())),
-                      ("ade_m", np.array(df["ade_m"].to_list()))):
+    for name, arr in (
+        ("features", feats),
+        ("state", np.array(df["state"].to_list())),
+        ("ade_m", np.array(df["ade_m"].to_list())),
+    ):
         if not np.isfinite(arr).all():
             raise ValueError(f"{data_dir}/{split}: non-finite values in {name}")
     return {
@@ -73,7 +77,9 @@ def soft_targets(ade: torch.Tensor, tau: float) -> torch.Tensor:
     return torch.softmax(-ade / tau, dim=-1)
 
 
-def objective_loss(objective: str, logits: torch.Tensor, ade: torch.Tensor, tau: float) -> torch.Tensor:
+def objective_loss(
+    objective: str, logits: torch.Tensor, ade: torch.Tensor, tau: float
+) -> torch.Tensor:
     if objective == "soft_ce":
         return F.cross_entropy(logits, soft_targets(ade, tau))
     if objective == "ade_regression":
@@ -97,8 +103,9 @@ def evaluate(head: PolicyHead, data: dict, tau: float, objective: str = "soft_ce
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--encoder", default="dinov2-small")
     parser.add_argument("--out", type=Path, required=True)
@@ -106,15 +113,25 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-2)
-    parser.add_argument("--objective", choices=("ade_regression", "soft_ce"), default="ade_regression")
-    parser.add_argument("--tau", type=float, default=0.5,
-                        help="temperature (m): soft labels, or logits = -ADE/tau")
+    parser.add_argument(
+        "--objective", choices=("ade_regression", "soft_ce"), default="ade_regression"
+    )
+    parser.add_argument(
+        "--tau", type=float, default=0.5, help="temperature (m): soft labels, or logits = -ADE/tau"
+    )
     parser.add_argument("--hidden", type=int, default=512)
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--context", type=int, default=1,
-                        help="decisions of image features per input (frame-stack memory)")
-    parser.add_argument("--no-image", action="store_true",
-                        help="ablation: zero the image features (state-only policy)")
+    parser.add_argument(
+        "--context",
+        type=int,
+        default=1,
+        help="decisions of image features per input (frame-stack memory)",
+    )
+    parser.add_argument(
+        "--no-image",
+        action="store_true",
+        help="ablation: zero the image features (state-only policy)",
+    )
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -128,7 +145,9 @@ def main() -> None:
     opt = torch.optim.AdamW(head.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "config.json").write_text(json.dumps({k: str(v) for k, v in vars(args).items()}, indent=1))
+    (args.out / "config.json").write_text(
+        json.dumps({k: str(v) for k, v in vars(args).items()}, indent=1)
+    )
     log = open(args.out / "metrics.jsonl", "w")
     best = (float("inf"), None)
     n = len(train["ade"])
@@ -144,21 +163,38 @@ def main() -> None:
             loss.backward()
             opt.step()
         if epoch % 10 == 9 or epoch == args.epochs - 1:
-            row = {"epoch": epoch + 1, "train": evaluate(head, train, args.tau, args.objective),
-                   "val": evaluate(head, val, args.tau, args.objective)}
+            row = {
+                "epoch": epoch + 1,
+                "train": evaluate(head, train, args.tau, args.objective),
+                "val": evaluate(head, val, args.tau, args.objective),
+            }
             log.write(json.dumps(row) + "\n")
             log.flush()
             if row["val"]["regret_mean_m"] < best[0]:
                 best = (row["val"]["regret_mean_m"], row)
-                save_checkpoint(args.out / "best.pt", head, args.encoder,
-                                f"sft:{args.out.name}:e{epoch + 1}",
-                                {"metrics": row, "context": args.context})
-    save_checkpoint(args.out / "last.pt", head, args.encoder, f"sft:{args.out.name}:last",
-                    {"metrics": row, "context": args.context})
-    summary = {"best": best[1], "train_samples": n, "val_samples": len(val["label"]),
-               "seconds": round(time.time() - start, 1),
-               "peak_mem_mib": round(torch.cuda.max_memory_allocated() / 2**20, 1)
-               if device.type == "cuda" else None}
+                save_checkpoint(
+                    args.out / "best.pt",
+                    head,
+                    args.encoder,
+                    f"sft:{args.out.name}:e{epoch + 1}",
+                    {"metrics": row, "context": args.context},
+                )
+    save_checkpoint(
+        args.out / "last.pt",
+        head,
+        args.encoder,
+        f"sft:{args.out.name}:last",
+        {"metrics": row, "context": args.context},
+    )
+    summary = {
+        "best": best[1],
+        "train_samples": n,
+        "val_samples": len(val["label"]),
+        "seconds": round(time.time() - start, 1),
+        "peak_mem_mib": round(torch.cuda.max_memory_allocated() / 2**20, 1)
+        if device.type == "cuda"
+        else None,
+    }
     (args.out / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))
 

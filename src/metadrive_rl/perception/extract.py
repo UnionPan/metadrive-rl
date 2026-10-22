@@ -39,8 +39,10 @@ def main() -> None:
     elapsed = time.time() - start
     target = args.dataset.with_suffix(f".{args.encoder}.npy")
     np.save(target, out)
-    print(f"{len(paths)} images -> {target} ({out.shape[1]}-d), {len(paths) / elapsed:.1f} img/s, "
-          f"peak {torch.cuda.max_memory_allocated() / 2**20:.0f} MiB")
+    print(
+        f"{len(paths)} images -> {target} ({out.shape[1]}-d), {len(paths) / elapsed:.1f} img/s, "
+        f"peak {torch.cuda.max_memory_allocated() / 2**20:.0f} MiB"
+    )
 
 
 if __name__ == "__main__":

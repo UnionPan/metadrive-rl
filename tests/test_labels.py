@@ -19,9 +19,18 @@ def _log(rig_speed_mps: float, duration_s: float = 10.0) -> RolloutLog:
         x0 = rig_speed_mps * t0 / 1e6
         # Candidates: constant speeds 0, 5, 10 m/s from the current position.
         cands = np.stack([np.stack([x0 + v * horizon / 1e6, np.zeros(41)], 1) for v in (0, 5, 10)])
-        decisions.append({"is_decision": True, "decision_id": f"d{k}", "time_us": int(t0),
-                          "candidates_xy": cands, "candidates_t_us": ts, "speed_mps": rig_speed_mps,
-                          "command": 1, "lane_offset_m": 0.0})
+        decisions.append(
+            {
+                "is_decision": True,
+                "decision_id": f"d{k}",
+                "time_us": int(t0),
+                "candidates_xy": cands,
+                "candidates_t_us": ts,
+                "speed_mps": rig_speed_mps,
+                "command": 1,
+                "lane_offset_m": 0.0,
+            }
+        )
     return RolloutLog(Path("x"), "scene", "uuid", t, rig, np.zeros(len(t)), t, rig, decisions)
 
 

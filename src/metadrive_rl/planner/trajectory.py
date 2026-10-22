@@ -147,7 +147,9 @@ class ModeConditionedPlanner:
             return max(committed_offset_m - cfg.lane_width_m, -limit)
         return committed_offset_m
 
-    def _longitudinal_limits(self, action: HighLevelAction, v0: float) -> tuple[float, float, float]:
+    def _longitudinal_limits(
+        self, action: HighLevelAction, v0: float
+    ) -> tuple[float, float, float]:
         cfg = self.cfg
         match action.mode:
             case Mode.CRUISE | Mode.CHANGE_LANE_LEFT | Mode.CHANGE_LANE_RIGHT:

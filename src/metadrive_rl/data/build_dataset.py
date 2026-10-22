@@ -34,18 +34,21 @@ def build(collection_dir: Path, split: str) -> tuple[pl.DataFrame, dict]:
             if not image.exists():
                 missing_images += 1
                 continue
-            rows.append({
-                "decision_id": d.decision_id,
-                "split": split,
-                "scene_id": log.scene_id,
-                "rollout_uuid": log.rollout_uuid,
-                "time_us": d.time_us,
-                "image": str(image),
-                "state": state_features(d.speed_mps, d.command, d.lane_offset_m,
-                                        routes[d.decision_id]).tolist(),
-                "ade_m": d.ade_m.tolist(),
-                "label": d.label,
-            })
+            rows.append(
+                {
+                    "decision_id": d.decision_id,
+                    "split": split,
+                    "scene_id": log.scene_id,
+                    "rollout_uuid": log.rollout_uuid,
+                    "time_us": d.time_us,
+                    "image": str(image),
+                    "state": state_features(
+                        d.speed_mps, d.command, d.lane_offset_m, routes[d.decision_id]
+                    ).tolist(),
+                    "ade_m": d.ade_m.tolist(),
+                    "label": d.label,
+                }
+            )
     df = pl.DataFrame(rows)
     labels = Counter(df["label"].to_list())
     manifest = {

@@ -15,12 +15,14 @@ def test_labels_round_trip():
 
 
 def test_safety_then_progress():
-    out = pl.DataFrame([
-        {"scene_id": "s", "action": "CRUISE@10", "passed": False, "progress": 0.9},
-        {"scene_id": "s", "action": "FOLLOW", "passed": True, "progress": 0.5},
-        {"scene_id": "s", "action": "YIELD", "passed": True, "progress": 0.49},  # within margin
-        {"scene_id": "s", "action": "BRAKE", "passed": True, "progress": 0.1},
-    ])
+    out = pl.DataFrame(
+        [
+            {"scene_id": "s", "action": "CRUISE@10", "passed": False, "progress": 0.9},
+            {"scene_id": "s", "action": "FOLLOW", "passed": True, "progress": 0.5},
+            {"scene_id": "s", "action": "YIELD", "passed": True, "progress": 0.49},  # within margin
+            {"scene_id": "s", "action": "BRAKE", "passed": True, "progress": 0.1},
+        ]
+    )
     pairs = {(r["winner"], r["loser"], r["reason"]) for r in preference_pairs(out, 0.02).to_dicts()}
     assert (IDX["FOLLOW"], IDX["CRUISE@10"], "safety") in pairs  # fast but at fault loses
     assert (IDX["FOLLOW"], IDX["BRAKE"], "progress") in pairs  # stopping is not "safe enough"

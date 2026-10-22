@@ -36,8 +36,9 @@ class FrozenEncoder:
     @torch.no_grad()
     def encode(self, images: list[np.ndarray]) -> np.ndarray:
         """``images``: HWC uint8 arrays. Returns (N, dim) float32."""
-        batch = np.stack([np.asarray(Image.fromarray(im).resize(self.input_wh, Image.BILINEAR))
-                          for im in images])
+        batch = np.stack(
+            [np.asarray(Image.fromarray(im).resize(self.input_wh, Image.BILINEAR)) for im in images]
+        )
         x = torch.from_numpy(batch).to(self.device).permute(0, 3, 1, 2).float() / 255.0
         x = ((x - self.mean) / self.std).half()
         tokens = self.model(pixel_values=x).last_hidden_state

@@ -16,7 +16,8 @@ or offroad, else clipped relative progress), optionally shaped by
 
 Usage:
     python -m metadrive_rl.training.grpo build <rollout-dir> <batch-dir> --features <dir>
-    python -m metadrive_rl.training.grpo update <batch-dir> --policy <ckpt> --ref <ckpt> --out <ckpt>
+    python -m metadrive_rl.training.grpo update <batch-dir> \\
+        --policy <ckpt> --ref <ckpt> --out <ckpt> --version <name>
 """
 
 from __future__ import annotations
@@ -70,21 +71,32 @@ def build(rollout_dir: Path, batch_dir: Path, feature_dir: Path, progress_weight
             if not f.exists():
                 continue
             feats.append(np.load(f))
-            rows.append({
-                "decision_id": d["decision_id"], "scene_id": scene, "rollout_uuid": log.rollout_uuid,
-                "time_us": d["time_us"],
-                "policy_version": d["policy_version"], "action": d["action_index"],
-                "behaviour_logp": d["log_prob"], "reward": reward, "advantage": advantage,
-                "state": state_features(d["speed_mps"], d["command"], d["lane_offset_m"],
-                                        d.get("route_xy")).tolist(),
-            })
+            rows.append(
+                {
+                    "decision_id": d["decision_id"],
+                    "scene_id": scene,
+                    "rollout_uuid": log.rollout_uuid,
+                    "time_us": d["time_us"],
+                    "policy_version": d["policy_version"],
+                    "action": d["action_index"],
+                    "behaviour_logp": d["log_prob"],
+                    "reward": reward,
+                    "advantage": advantage,
+                    "state": state_features(
+                        d["speed_mps"], d["command"], d["lane_offset_m"], d.get("route_xy")
+                    ).tolist(),
+                }
+            )
     batch_dir.mkdir(parents=True, exist_ok=True)
     pl.DataFrame(rows).write_parquet(batch_dir / "decisions.parquet")
     np.save(batch_dir / "features.npy", np.stack(feats).astype(np.float32))
     degenerate = sum(1 for s, (m, sd) in stats.items() if sd < 1e-6)
     manifest = {
-        "rollout_dir": str(rollout_dir), "rollouts": len(rewards), "decisions": len(rows),
-        "scenes": len(by_scene), "groups_with_zero_reward_variance": degenerate,
+        "rollout_dir": str(rollout_dir),
+        "rollouts": len(rewards),
+        "decisions": len(rows),
+        "scenes": len(by_scene),
+        "groups_with_zero_reward_variance": degenerate,
         "reward_mean": float(np.mean([r for _, r in rewards.values()])),
         "policy_versions": sorted({r["policy_version"] for r in rows}),
         "progress_weight": progress_weight,
@@ -100,8 +112,19 @@ def load_head(path: Path, device: torch.device) -> tuple[PolicyHead, dict]:
     return head, ckpt
 
 
-def update(batch_dir: Path, policy_path: Path, ref_path: Path, out: Path, *, clip: float,
-           kl_coef: float, epochs: int, lr: float, batch_size: int, version: str) -> dict:
+def update(
+    batch_dir: Path,
+    policy_path: Path,
+    ref_path: Path,
+    out: Path,
+    *,
+    clip: float,
+    kl_coef: float,
+    epochs: int,
+    lr: float,
+    batch_size: int,
+    version: str,
+) -> dict:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     df = pl.read_parquet(batch_dir / "decisions.parquet")
     policy, ckpt = load_head(policy_path, device)
@@ -135,22 +158,37 @@ def update(batch_dir: Path, policy_path: Path, ref_path: Path, out: Path, *, cli
         with torch.no_grad():
             logp_all = F.log_softmax(policy(x, s), -1)
             ratio = torch.exp(logp_all.gather(1, a[:, None])[:, 0] - old_logp)
-            history.append({
-                "epoch": epoch + 1,
-                "kl_to_ref": float((logp_all.exp() * (logp_all - ref_logp_all)).sum(-1).mean()),
-                "entropy": float(-(logp_all.exp() * logp_all).sum(-1).mean()),
-                "clip_fraction": float(((ratio - 1).abs() > clip).float().mean()),
-                "ratio_mean": float(ratio.mean()),
-            })
-    save_checkpoint(out, policy, ckpt["encoder"], version,
-                    {"context": ckpt.get("context", 1), "grpo": {"batch": str(batch_dir), "parent": str(policy_path),
-                              "reference": str(ref_path), "history": history}})
+            history.append(
+                {
+                    "epoch": epoch + 1,
+                    "kl_to_ref": float((logp_all.exp() * (logp_all - ref_logp_all)).sum(-1).mean()),
+                    "entropy": float(-(logp_all.exp() * logp_all).sum(-1).mean()),
+                    "clip_fraction": float(((ratio - 1).abs() > clip).float().mean()),
+                    "ratio_mean": float(ratio.mean()),
+                }
+            )
+    save_checkpoint(
+        out,
+        policy,
+        ckpt["encoder"],
+        version,
+        {
+            "context": ckpt.get("context", 1),
+            "grpo": {
+                "batch": str(batch_dir),
+                "parent": str(policy_path),
+                "reference": str(ref_path),
+                "history": history,
+            },
+        },
+    )
     return {"decisions": len(a), "advantage_std": float(adv.std()), "final": history[-1]}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     sub = parser.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
     b.add_argument("rollout_dir", type=Path)
@@ -172,9 +210,18 @@ def main() -> None:
     if args.cmd == "build":
         result = build(args.rollout_dir, args.batch_dir, args.features, args.progress_weight)
     else:
-        result = update(args.batch_dir, args.policy, args.ref, args.out, clip=args.clip,
-                        kl_coef=args.kl_coef, epochs=args.epochs, lr=args.lr,
-                        batch_size=args.batch_size, version=args.version)
+        result = update(
+            args.batch_dir,
+            args.policy,
+            args.ref,
+            args.out,
+            clip=args.clip,
+            kl_coef=args.kl_coef,
+            epochs=args.epochs,
+            lr=args.lr,
+            batch_size=args.batch_size,
+            version=args.version,
+        )
     print(json.dumps(result, indent=1))
 
 

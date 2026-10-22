@@ -21,13 +21,13 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
 from alpasim_driver.models.base import (
     BaseTrajectoryModel,
     DriveCommand,
     ModelPrediction,
     PredictionInput,
 )
+from PIL import Image
 
 from metadrive_rl.planner import ACTIONS, ModeConditionedPlanner, PlannerConfig
 from metadrive_rl.planner.trajectory import RoutePath
@@ -140,7 +140,9 @@ class MetaDriveModel(BaseTrajectoryModel):
         trained_encoder = getattr(self.policy, "encoder_name", None)
         if trained_encoder is not None:
             if spec.encoder is not None and spec.encoder["name"] != trained_encoder:
-                raise ValueError(f"policy expects encoder {trained_encoder}, spec has {spec.encoder}")
+                raise ValueError(
+                    f"policy expects encoder {trained_encoder}, spec has {spec.encoder}"
+                )
             spec.encoder = {"name": trained_encoder}
         self.encoder = None
         if spec.encoder is not None:
@@ -157,8 +159,9 @@ class MetaDriveModel(BaseTrajectoryModel):
 
     @classmethod
     def from_config(cls, model_cfg, device, camera_ids, context_length, output_frequency_hz):
-        return cls(PolicySpec.parse(model_cfg.checkpoint_path), camera_ids, output_frequency_hz,
-                   device)
+        return cls(
+            PolicySpec.parse(model_cfg.checkpoint_path), camera_ids, output_frequency_hz, device
+        )
 
     @property
     def camera_ids(self) -> list[str]:
@@ -195,9 +198,7 @@ class MetaDriveModel(BaseTrajectoryModel):
                 for k, past in enumerate(history):
                     stacked[k * len(f) : (k + 1) * len(f)] = past
                 observations[i].features = stacked
-        return [
-            self._step(observations[i], states[i], i in due) for i in range(len(states))
-        ]
+        return [self._step(observations[i], states[i], i in due) for i in range(len(states))]
 
     def _follow_route_reanchoring(self, state: _SessionState, route_xy: np.ndarray | None) -> None:
         """Keep the committed lane when the route jumps laterally under the ego.
@@ -263,13 +264,18 @@ class MetaDriveModel(BaseTrajectoryModel):
                 # Single-frame features; batches rebuild the stack from these.
                 np.save(self.feature_dir / f"{state.decision_id}.npy", state.history[0])
             if self.image_dir is not None and obs.image is not None:
-                Image.fromarray(obs.image).save(self.image_dir / f"{state.decision_id}.jpg",
-                                                quality=95)
+                Image.fromarray(obs.image).save(
+                    self.image_dir / f"{state.decision_id}.jpg", quality=95
+                )
         decision = state.decision
         assert decision is not None
 
         plans = self.planner.plan_all(
-            ACTIONS, obs.speed_mps, obs.accel_mps2, obs.route_xy, state.base_offset_m,
+            ACTIONS,
+            obs.speed_mps,
+            obs.accel_mps2,
+            obs.route_xy,
+            state.base_offset_m,
             state.travelled_since_target_m,
         )
         chosen = plans[decision.action_index]

@@ -28,13 +28,16 @@ def route_lateral_profile(route_xy: np.ndarray | None) -> np.ndarray:
     return np.interp(ROUTE_LOOKAHEAD_M, s, pts[:, 1])
 
 
-def state_features(speed_mps: float, command: int, lane_offset_m: float,
-                   route_xy: np.ndarray | None) -> np.ndarray:
+def state_features(
+    speed_mps: float, command: int, lane_offset_m: float, route_xy: np.ndarray | None
+) -> np.ndarray:
     command_one_hot = np.zeros(N_COMMANDS)
     command_one_hot[int(command)] = 1.0
-    return np.concatenate([
-        [speed_mps / 10.0],
-        command_one_hot,
-        [lane_offset_m / 3.5],
-        route_lateral_profile(route_xy) / 10.0,
-    ]).astype(np.float32)
+    return np.concatenate(
+        [
+            [speed_mps / 10.0],
+            command_one_hot,
+            [lane_offset_m / 3.5],
+            route_lateral_profile(route_xy) / 10.0,
+        ]
+    ).astype(np.float32)

@@ -80,8 +80,9 @@ def test_lane_change_progress_survives_repeated_decisions():
     """Re-deciding the same lane change must not restart the lateral blend."""
     model = _model("fixed:CHANGE_LANE_LEFT@10", decision_period_s=0.5)
     poses = [(0, object())]
-    recs = [_record(model.predict(_inputs(poses, 10 + k, k * 100_000, speed=8.0)))
-            for k in range(12)]
+    recs = [
+        _record(model.predict(_inputs(poses, 10 + k, k * 100_000, speed=8.0))) for k in range(12)
+    ]
     assert recs[5]["is_decision"] and recs[10]["is_decision"]
     assert recs[11]["lateral_elapsed_m"] == pytest.approx(8.0 * 1.1)
     assert all(r["lane_offset_m"] == pytest.approx(3.5) for r in recs)

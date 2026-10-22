@@ -44,9 +44,17 @@ def outcomes(branch_dir: Path) -> pl.DataFrame:
         action = HighLevelAction.from_text(_label_to_action(summary.parts[-4])).to_text()
         for r in json.loads(summary.read_text())["rollouts"]:
             m = r["metrics"]
-            rows.append({"scene_id": r["clipgt_id"], "action": action, "passed": bool(r["passed"]),
-                         "score": r["score"], "progress": m["progress"],
-                         "collision_at_fault": m["collision_at_fault"], "offroad": m["offroad"]})
+            rows.append(
+                {
+                    "scene_id": r["clipgt_id"],
+                    "action": action,
+                    "passed": bool(r["passed"]),
+                    "score": r["score"],
+                    "progress": m["progress"],
+                    "collision_at_fault": m["collision_at_fault"],
+                    "offroad": m["offroad"],
+                }
+            )
     return pl.DataFrame(rows)
 
 
@@ -64,10 +72,14 @@ def preference_pairs(out: pl.DataFrame, margin: float) -> pl.DataFrame:
             safer = a["passed"] and not b["passed"]
             faster = a["passed"] and b["passed"] and a["progress"] > b["progress"] + margin
             if safer or faster:
-                pairs.append({"scene_id": scene[0] if isinstance(scene, tuple) else scene,
-                              "winner": HighLevelAction.from_text(a["action"]).index,
-                              "loser": HighLevelAction.from_text(b["action"]).index,
-                              "reason": "safety" if safer else "progress"})
+                pairs.append(
+                    {
+                        "scene_id": scene[0] if isinstance(scene, tuple) else scene,
+                        "winner": HighLevelAction.from_text(a["action"]).index,
+                        "loser": HighLevelAction.from_text(b["action"]).index,
+                        "reason": "safety" if safer else "progress",
+                    }
+                )
     return pl.DataFrame(pairs)
 
 
@@ -82,12 +94,17 @@ def branch_states(branch_dir: Path, branch_s: float, context: int) -> list[dict]
         k = next(i for i, d in enumerate(decisions) if d["time_us"] >= t0 + branch_s * 1e6)
         stack = [decisions[j] if j >= 0 else None for j in range(k, k - context, -1)]
         d = decisions[k]
-        states.append({
-            "scene_id": log.scene_id,
-            "images": [str(run / "images" / f"{s['decision_id']}.jpg") if s else "" for s in stack],
-            "state": state_features(d["speed_mps"], d["command"], d["lane_offset_m"],
-                                    d.get("route_xy")).tolist(),
-        })
+        states.append(
+            {
+                "scene_id": log.scene_id,
+                "images": [
+                    str(run / "images" / f"{s['decision_id']}.jpg") if s else "" for s in stack
+                ],
+                "state": state_features(
+                    d["speed_mps"], d["command"], d["lane_offset_m"], d.get("route_xy")
+                ).tolist(),
+            }
+        )
     return states
 
 
@@ -106,8 +123,9 @@ def encode_states(states: list[dict], encoder: FrozenEncoder) -> np.ndarray:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("branch_dir", type=Path)
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--sft", type=Path, required=True, help="defines encoder and context")
@@ -124,14 +142,22 @@ def main() -> None:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     table.write_parquet(args.out_dir / "outcomes.parquet")
     pl.DataFrame([{k: v for k, v in s.items() if k != "images"} for s in states]).write_parquet(
-        args.out_dir / "states.parquet")
+        args.out_dir / "states.parquet"
+    )
     np.save(args.out_dir / "features.npy", features)
     pairs.write_parquet(args.out_dir / "pairs.parquet")
     summary = {
-        "scenes": len(states), "outcomes": len(table), "pairs": len(pairs),
+        "scenes": len(states),
+        "outcomes": len(table),
+        "pairs": len(pairs),
         "pairs_by_reason": pairs.group_by("reason").len().to_dicts() if len(pairs) else [],
-        "pass_rate_by_action": table.group_by("action").agg(pl.col("passed").mean()).sort("action").to_dicts(),
-        "encoder": ckpt["encoder"], "context": ckpt.get("context", 1), **cfg,
+        "pass_rate_by_action": table.group_by("action")
+        .agg(pl.col("passed").mean())
+        .sort("action")
+        .to_dicts(),
+        "encoder": ckpt["encoder"],
+        "context": ckpt.get("context", 1),
+        **cfg,
     }
     (args.out_dir / "manifest.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))

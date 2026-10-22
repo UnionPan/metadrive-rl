@@ -3,7 +3,10 @@
 AlpaSim's aggregation scores each rollout up to its first incident: an
 at-fault collision or offroad fails the rollout, otherwise the score is the
 clipped relative progress (see ``score_criteria`` in results-summary.json).
-This reports per-run means with bootstrap 95% confidence intervals.
+This reports per-run means with 95% confidence intervals from a cluster
+bootstrap over scenes: rollouts of one scene are not independent (a
+deterministic policy repeats the same rollout), so scenes are resampled and
+each contributes the mean of its rollouts.
 
 Usage: python -m metadrive_rl.evaluation.summarize <run-dir>[=label] ... [--out table.md]
 """
@@ -33,29 +36,40 @@ def rollouts(run_dir: Path) -> list[dict]:
     out = []
     for f in files:
         for r in json.loads(f.read_text())["rollouts"]:
-            out.append({"scene": r["clipgt_id"], "score": r["score"], "passed": float(r["passed"]),
-                        **{k: r["metrics"][k] for k, _ in METRICS[2:]}})
+            out.append(
+                {
+                    "scene": r["clipgt_id"],
+                    "score": r["score"],
+                    "passed": float(r["passed"]),
+                    **{k: r["metrics"][k] for k, _ in METRICS[2:]},
+                }
+            )
     return out
 
 
-def bootstrap_ci(values: np.ndarray, n: int = 2000, seed: int = 0) -> tuple[float, float]:
-    if len(values) < 2:
+def bootstrap_ci(scene_means: np.ndarray, n: int = 2000, seed: int = 0) -> tuple[float, float]:
+    """95% interval of the mean over scenes, resampling scenes with replacement."""
+    if len(scene_means) < 2:
         return float("nan"), float("nan")
     rng = np.random.default_rng(seed)
-    means = rng.choice(values, size=(n, len(values)), replace=True).mean(1)
+    means = rng.choice(scene_means, size=(n, len(scene_means)), replace=True).mean(1)
     return float(np.percentile(means, 2.5)), float(np.percentile(means, 97.5))
 
 
 def table(runs: dict[str, list[dict]]) -> str:
-    header = "| run | rollouts | " + " | ".join(name for _, name in METRICS) + " |"
+    header = "| run | scenes | rollouts | " + " | ".join(name for _, name in METRICS) + " |"
     lines = [header, "|" + "---|" * (header.count("|") - 1)]
     for label, rows in runs.items():
+        scenes = sorted({r["scene"] for r in rows})
         cells = []
         for key, _ in METRICS:
-            v = np.array([r[key] for r in rows], dtype=float)
-            lo, hi = bootstrap_ci(v)
-            cells.append(f"{v.mean():.3g} [{lo:.3g}, {hi:.3g}]" if np.isfinite(lo) else f"{v.mean():.3g}")
-        lines.append(f"| {label} | {len(rows)} | " + " | ".join(cells) + " |")
+            per_scene = np.array(
+                [np.mean([r[key] for r in rows if r["scene"] == s]) for s in scenes]
+            )
+            lo, hi = bootstrap_ci(per_scene)
+            mean = per_scene.mean()
+            cells.append(f"{mean:.3g} [{lo:.3g}, {hi:.3g}]" if np.isfinite(lo) else f"{mean:.3g}")
+        lines.append(f"| {label} | {len(scenes)} | {len(rows)} | " + " | ".join(cells) + " |")
     return "\n".join(lines)
 
 

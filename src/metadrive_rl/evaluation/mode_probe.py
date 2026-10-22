@@ -71,9 +71,11 @@ def analyse(probe_dir: Path, report_dir: Path) -> str:
     ref = runs[REFERENCE][0]
 
     rows = []
-    header = "| run | actions | duration s | max div. vs CRUISE@10 m | final div. m | " + " | ".join(
-        METRICS
-    ) + " |"
+    header = (
+        "| run | actions | duration s | max div. vs CRUISE@10 m | final div. m | "
+        + " | ".join(METRICS)
+        + " |"
+    )
     rows.append(header)
     rows.append("|" + "---|" * (header.count("|") - 1))
     fig, (ax_s, ax_d) = plt.subplots(1, 2, figsize=(13, 4.5))
@@ -89,13 +91,18 @@ def analyse(probe_dir: Path, report_dir: Path) -> str:
             f"{final_div:.2f} | " + " | ".join(vals) + " |"
         )
         t = (log.ego_t_us - log.ego_t_us[0]) / 1e6
-        travelled = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(log.ego_xy, axis=0), axis=1))])
+        travelled = np.concatenate(
+            [[0.0], np.cumsum(np.linalg.norm(np.diff(log.ego_xy, axis=0), axis=1))]
+        )
         ax_s.plot(t, travelled, label=name, lw=1.5)
         along, lateral = _frenet(log.ego_xy, ref.ego_xy)
         ax_d.plot(along, lateral, label=name, lw=1.5)
     ax_s.set(xlabel="time (s)", ylabel="distance travelled (m)", title="Longitudinal: speed modes")
-    ax_d.set(xlabel="distance along CRUISE@10 path (m)", ylabel="lateral offset, left + (m)",
-             title="Lateral: lane-change modes")
+    ax_d.set(
+        xlabel="distance along CRUISE@10 path (m)",
+        ylabel="lateral offset, left + (m)",
+        title="Lateral: lane-change modes",
+    )
     ax_s.legend(fontsize=8)
     fig.suptitle(f"Executed ego paths per fixed action, {ref.scene_id} (closed loop)")
     report_dir.mkdir(parents=True, exist_ok=True)

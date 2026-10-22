@@ -54,9 +54,14 @@ def load_branch_pairs(pair_dir: Path, device: torch.device) -> dict:
     pairs = pl.read_parquet(pair_dir / "pairs.parquet")
     return {
         "features": torch.tensor(np.load(pair_dir / "features.npy"), device=device),
-        "state": torch.tensor(np.array(states["state"].to_list()), dtype=torch.float32, device=device),
-        "pairs": torch.tensor([[row[r["scene_id"]], r["winner"], r["loser"]] for r in pairs.to_dicts()],
-                              dtype=torch.long, device=device),
+        "state": torch.tensor(
+            np.array(states["state"].to_list()), dtype=torch.float32, device=device
+        ),
+        "pairs": torch.tensor(
+            [[row[r["scene_id"]], r["winner"], r["loser"]] for r in pairs.to_dicts()],
+            dtype=torch.long,
+            device=device,
+        ),
     }
 
 
@@ -75,8 +80,9 @@ def load_head(path: Path, device: torch.device) -> tuple[PolicyHead, dict]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--sft", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
@@ -105,8 +111,11 @@ def main() -> None:
         pref = load_branch_pairs(args.pairs, device)
         val_pref = load_branch_pairs(args.val_pairs, device) if args.val_pairs else None
     else:
-        pref = {"features": train["features"], "state": train["state"],
-                "pairs": preference_pairs(train["ade"], args.margin, args.pairs_per_decision)}
+        pref = {
+            "features": train["features"],
+            "state": train["state"],
+            "pairs": preference_pairs(train["ade"], args.margin, args.pairs_per_decision),
+        }
         val_pref = None
     pairs = pref["pairs"]
     with torch.no_grad():
@@ -114,7 +123,9 @@ def main() -> None:
 
     opt = torch.optim.AdamW(policy.parameters(), lr=args.lr)
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "config.json").write_text(json.dumps({k: str(v) for k, v in vars(args).items()}, indent=1))
+    (args.out / "config.json").write_text(
+        json.dumps({k: str(v) for k, v in vars(args).items()}, indent=1)
+    )
     log = open(args.out / "metrics.jsonl", "w")
     initial = {"val": evaluate(policy, val, args.tau)}
     if args.pairs:
@@ -122,6 +133,7 @@ def main() -> None:
         if val_pref is not None:
             initial["val_pair_accuracy"] = pair_accuracy(policy, val_pref)
     log.write(json.dumps({"epoch": 0, **initial}) + "\n")
+
     def selection_loss(row: dict) -> float:
         # Branch mode optimises held-out preferences; otherwise imitation regret.
         if val_pref is not None:
@@ -137,7 +149,8 @@ def main() -> None:
             d, w, lo = pairs[perm[i : i + args.batch_size]].T
             logp = F.log_softmax(policy(pref["features"][d], pref["state"][d]), -1)
             margin = (logp[torch.arange(len(d)), w] - ref_logp[d, w]) - (
-                logp[torch.arange(len(d)), lo] - ref_logp[d, lo])
+                logp[torch.arange(len(d)), lo] - ref_logp[d, lo]
+            )
             loss = -F.logsigmoid(args.beta * margin).mean()
             opt.zero_grad()
             loss.backward()
@@ -148,22 +161,39 @@ def main() -> None:
                 logp = F.log_softmax(policy(pref["features"], pref["state"]), -1)
                 pref_acc = float((logp[d, w] > logp[d, lo]).float().mean())
                 kl = float((logp.exp() * (logp - ref_logp)).sum(-1).mean())
-            row = {"epoch": epoch + 1, "pair_accuracy": pref_acc, "kl_to_ref": kl,
-                   "val": evaluate(policy, val, args.tau)}
+            row = {
+                "epoch": epoch + 1,
+                "pair_accuracy": pref_acc,
+                "kl_to_ref": kl,
+                "val": evaluate(policy, val, args.tau),
+            }
             if val_pref is not None:
                 row["val_pair_accuracy"] = pair_accuracy(policy, val_pref)
             log.write(json.dumps(row) + "\n")
             log.flush()
             if selection_loss(row) < best[0]:
                 best = (selection_loss(row), row)
-                save_checkpoint(args.out / "best.pt", policy, encoder,
-                                f"dpo:{args.out.name}:e{epoch + 1}",
-                                {"metrics": row, "context": context})
-    summary = {"sft_val": initial["val"], "best": best[1], "pairs": len(pairs),
-               "seconds": round(time.time() - start, 1)}
+                save_checkpoint(
+                    args.out / "best.pt",
+                    policy,
+                    encoder,
+                    f"dpo:{args.out.name}:e{epoch + 1}",
+                    {"metrics": row, "context": context},
+                )
+    summary = {
+        "sft_val": initial["val"],
+        "best": best[1],
+        "pairs": len(pairs),
+        "seconds": round(time.time() - start, 1),
+    }
     if not (args.out / "best.pt").exists():  # DPO never beat the SFT start
-        save_checkpoint(args.out / "best.pt", reference, encoder,
-                        f"dpo:{args.out.name}:sft-init", {"metrics": initial, "context": context})
+        save_checkpoint(
+            args.out / "best.pt",
+            reference,
+            encoder,
+            f"dpo:{args.out.name}:sft-init",
+            {"metrics": initial, "context": context},
+        )
     (args.out / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary, indent=1))
 

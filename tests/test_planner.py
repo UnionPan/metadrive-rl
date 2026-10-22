@@ -46,8 +46,9 @@ def test_modes_produce_distinct_trajectories(planner):
 def test_longitudinal_ordering(planner):
     v0 = 8.0
     final = {
-        m: planner.plan(HighLevelAction(m, 10.0 if m == Mode.CRUISE else None),
-                        v0, 0.0, STRAIGHT_ROUTE)
+        m: planner.plan(
+            HighLevelAction(m, 10.0 if m == Mode.CRUISE else None), v0, 0.0, STRAIGHT_ROUTE
+        )
         for m in (Mode.CRUISE, Mode.FOLLOW, Mode.YIELD, Mode.BRAKE)
     }
     dist = {m: p.xy[-1, 0] for m, p in final.items()}
@@ -72,8 +73,9 @@ def test_committed_offset_is_kept(planner):
 
 def test_limits_respected(planner):
     # Start well before the bend so the speed cap has room to act.
-    approach = np.vstack([np.stack([np.linspace(-60, -1, 30), np.zeros(30)], axis=1),
-                          LEFT_CURVE_ROUTE + [40.0, 0.0]])
+    approach = np.vstack(
+        [np.stack([np.linspace(-60, -1, 30), np.zeros(30)], axis=1), LEFT_CURVE_ROUTE + [40.0, 0.0]]
+    )
     for route in (STRAIGHT_ROUTE, approach, None):
         for plan in planner.plan_all(ACTIONS, 12.0, 0.0, route):
             assert np.all(np.isfinite(plan.xy))
@@ -105,8 +107,9 @@ def test_lane_change_completes_under_replanning(planner):
     x, y, travelled = 0.0, 0.0, 0.0
     while x < 60.0:
         route = STRAIGHT_ROUTE - [x, y]
-        plan = planner.plan(action, 10.0, 0.0, route, committed_offset_m=0.0,
-                            transition_elapsed_m=travelled)
+        plan = planner.plan(
+            action, 10.0, 0.0, route, committed_offset_m=0.0, transition_elapsed_m=travelled
+        )
         dx, dy = plan.xy[0]
         x, y, travelled = x + dx, y + dy, travelled + float(np.hypot(dx, dy))
     assert y == pytest.approx(3.5, abs=0.1)

@@ -15,7 +15,9 @@ def test_route_profile_reads_lateral_offsets_ahead():
     xs = np.linspace(-5, 60, 66)
     route = np.stack([xs, 0.05 * xs], 1)  # gentle left drift
     profile = route_lateral_profile(route)
-    assert profile == pytest.approx(0.05 * np.array([5, 10, 20, 40]) / np.sqrt(1 + 0.05**2), rel=1e-2)
+    assert profile == pytest.approx(
+        0.05 * np.array([5, 10, 20, 40]) / np.sqrt(1 + 0.05**2), rel=1e-2
+    )
     assert route_lateral_profile(None).tolist() == [0.0] * 4
     assert state_features(5.0, 1, 0.0, route).shape == (STATE_DIM,)
 
@@ -26,13 +28,15 @@ def _write_split(data, split, n, rng, feature_dim=16):
     ade = np.full((n, NUM_ACTIONS), 3.0)
     best = np.where(feats[:, 0] > 0, 2, 7)
     ade[np.arange(n), best] = 0.1
-    pl.DataFrame({
-        "decision_id": [f"d{i}" for i in range(n)],
-        "image": ["unused"] * n,
-        "state": [state_features(5.0, 1, 0.0, None).tolist()] * n,
-        "ade_m": ade.tolist(),
-        "label": best,
-    }).write_parquet(data / f"{split}.parquet")
+    pl.DataFrame(
+        {
+            "decision_id": [f"d{i}" for i in range(n)],
+            "image": ["unused"] * n,
+            "state": [state_features(5.0, 1, 0.0, None).tolist()] * n,
+            "ade_m": ade.tolist(),
+            "label": best,
+        }
+    ).write_parquet(data / f"{split}.parquet")
     np.save(data / f"{split}.fake.npy", feats)
 
 
@@ -43,8 +47,22 @@ def test_sft_learns_feature_dependent_action(tmp_path):
     for split, n in (("train", 256), ("val", 64)):
         _write_split(data, split, n, rng)
     out = tmp_path / "run"
-    subprocess.run([sys.executable, "-m", "metadrive_rl.training.sft", "--data", str(data),
-                    "--encoder", "fake", "--out", str(out), "--epochs", "60"], check=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "metadrive_rl.training.sft",
+            "--data",
+            str(data),
+            "--encoder",
+            "fake",
+            "--out",
+            str(out),
+            "--epochs",
+            "60",
+        ],
+        check=True,
+    )
     summary = json.loads((out / "summary.json").read_text())
     assert summary["best"]["val"]["top1"] > 0.9
     assert summary["best"]["val"]["regret_mean_m"] < 0.3
@@ -68,11 +86,38 @@ def test_dpo_runs_from_sft_checkpoint(tmp_path):
     rng = np.random.default_rng(0)
     for split, n in (("train", 256), ("val", 64)):
         _write_split(data, split, n, rng)
-    subprocess.run([sys.executable, "-m", "metadrive_rl.training.sft", "--data", str(data),
-                    "--encoder", "fake", "--out", str(tmp_path / "sft"), "--epochs", "20"], check=True)
-    subprocess.run([sys.executable, "-m", "metadrive_rl.training.dpo", "--data", str(data),
-                    "--sft", str(tmp_path / "sft" / "best.pt"), "--out", str(tmp_path / "dpo"),
-                    "--epochs", "10"], check=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "metadrive_rl.training.sft",
+            "--data",
+            str(data),
+            "--encoder",
+            "fake",
+            "--out",
+            str(tmp_path / "sft"),
+            "--epochs",
+            "20",
+        ],
+        check=True,
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "metadrive_rl.training.dpo",
+            "--data",
+            str(data),
+            "--sft",
+            str(tmp_path / "sft" / "best.pt"),
+            "--out",
+            str(tmp_path / "dpo"),
+            "--epochs",
+            "10",
+        ],
+        check=True,
+    )
     summary = json.loads((tmp_path / "dpo" / "summary.json").read_text())
     assert summary["pairs"] > 0
     assert summary["best"]["val"]["regret_mean_m"] <= summary["sft_val"]["regret_mean_m"]
