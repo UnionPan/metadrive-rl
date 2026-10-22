@@ -424,6 +424,21 @@ active during sampling and evaluation (`POLICY_EXTRA`). Question: with the
 car ahead guarded by the prior, can RL find progress-vs-safety trade-offs
 the policy alone cannot?
 
+Side result from iteration 1. It samples the same SFT policy (temperature 1)
+on the same subset (train_a) as iteration 1 of the main run, so it is a
+paired governor comparison (15 scenes × 4 rollouts, the scenes both runs
+completed):
+
+| | SFT (main it1) | SFT + governor v2 (gov2 it1) | paired difference |
+|---|---|---|---|
+| at-fault collision | 0.183 | 0.100 | **−0.083 [−0.150, −0.033]** |
+| score | 0.371 | 0.426 | +0.055 [−0.005, +0.121] |
+| progress | 0.419 | 0.398 | −0.022 [−0.056, +0.016] |
+
+The first governor CI that excludes zero, but on *training* scenes: the gap
+head saw dense frames from most of them, so perception is in-distribution
+and the effect is optimistic. eval_big decides.
+
 **Statistical power of the closed-loop evaluation.** From paired per-scene
 score differences on val_cl: policies that behave alike (SFT vs always-FOLLOW:
 paired SD 0.043) are resolved by a few scenes, but behaviourally different
