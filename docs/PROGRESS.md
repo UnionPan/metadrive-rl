@@ -537,6 +537,18 @@ of val labels change.
 
 (false alarm: predicted < 10 m when the true gap is ≥ 30 m.)
 
+**Corridor along the driven path.** A straight corridor sweeps over cars
+parked along a bend. Labels now follow the path the ego actually drives next
+(`future_path`/`path_gap`; 1,393 train labels change by > 0.5 m, mostly at
+long range; close-lead counts barely move). Heads trained on path labels fit
+them better (held-in MAE 0.4 vs 3.2 m), but on held-out frames they are not
+better: scored on path labels, straight-trained heads reach recall 0.97–0.98
+with no dangerous misses, path-trained heads 0.88 with 11%. All of the
+path-trained misses come from one val scene (36 frames; predictions ~42 m vs
+8 m). One scene decides this, so the comparison is inconclusive. The governor
+keeps the straight-label head chosen in advance; path labels are used for
+evaluation.
+
 The governor's main risk is now phantom engagement, not missed leads. On the
 12 held-out scenes, frame by frame: the true gap would engage the governor on
 5.3% of frames; the predicted gap engages it on 12%. Phantoms make up 7–8% of
