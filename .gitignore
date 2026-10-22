@@ -21,3 +21,7 @@ data/rollouts/
 wandb/
 mlruns/
 .env
+
+# Datasets: only manifests are versioned.
+data/datasets/**/*.parquet
+data/datasets/**/*.npy

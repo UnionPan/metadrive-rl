@@ -1,0 +1,28 @@
+{
+ "split": "val",
+ "source": "runs/expert/val",
+ "rollouts": 4,
+ "scenes": [
+  "clipgt-0026d903-764d-4bd0-96f5-7a6a3a6838e4",
+  "clipgt-252f2781-e7f5-459f-a5bf-1129bfa2ed62",
+  "clipgt-300465f7-0025-4f39-ac20-9f0eaa36ea68",
+  "clipgt-b0499b70-4b20-4389-8e0f-cd9fce07e7b2"
+ ],
+ "decisions": 128,
+ "missing_images": 0,
+ "label_histogram": {
+  "CRUISE@5": 19,
+  "CRUISE@10": 13,
+  "CRUISE@15": 20,
+  "FOLLOW": 42,
+  "YIELD": 7,
+  "BRAKE": 20,
+  "CHANGE_LANE_LEFT@5": 4,
+  "CHANGE_LANE_LEFT@10": 0,
+  "CHANGE_LANE_LEFT@15": 3,
+  "CHANGE_LANE_RIGHT@5": 0,
+  "CHANGE_LANE_RIGHT@10": 0,
+  "CHANGE_LANE_RIGHT@15": 0
+ },
+ "median_best_ade_m": 0.8132689448905094
+}

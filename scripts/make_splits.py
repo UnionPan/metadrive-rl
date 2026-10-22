@@ -18,6 +18,10 @@ import yaml
 SUITE = "public_2604"
 SEED = 0
 SIZES = {"train": 16, "val": 4, "test": 4}
+# Training scenes added after the first SFT round showed 16 scenes were too few.
+# They come after the val/test positions of the seeded shuffle, so val and test
+# are unchanged.
+TRAIN_EXTRA = 48
 DEVELOPMENT_SCENES = ["clipgt-01d503d4-449b-46fc-8d78-9085e70d3554"]
 
 
@@ -36,10 +40,11 @@ def main() -> None:
     pool = sorted(s for s in suite if s not in DEVELOPMENT_SCENES)
     random.Random(SEED).shuffle(pool)
     n_train = SIZES["train"] - len(DEVELOPMENT_SCENES)
+    end_test = n_train + SIZES["val"] + SIZES["test"]
     chosen = {
-        "train": DEVELOPMENT_SCENES + pool[:n_train],
+        "train": DEVELOPMENT_SCENES + pool[:n_train] + pool[end_test : end_test + TRAIN_EXTRA],
         "val": pool[n_train : n_train + SIZES["val"]],
-        "test": pool[n_train + SIZES["val"] : n_train + SIZES["val"] + SIZES["test"]],
+        "test": pool[n_train + SIZES["val"] : end_test],
     }
     splits = {
         name: [

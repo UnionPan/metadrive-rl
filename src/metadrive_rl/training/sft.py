@@ -1,10 +1,19 @@
 """Supervised fine-tuning of the policy head on expert decisions.
 
 Inputs are cached frozen-encoder features plus deployable state features.
-Targets are soft labels ``softmax(-ADE / tau)`` over the 12 candidates, since
-several actions are often near-equivalent; ``tau -> 0`` recovers the hard
-argmin label. Checkpoints are selected by validation regret: the ADE of the
-predicted action minus the best achievable ADE (metres).
+Two objectives:
+
+* ``soft_ce``: cross-entropy to soft labels ``softmax(-ADE / tau)``.
+* ``ade_regression`` (default): regress every candidate's ADE (Huber) and
+  act by argmin of the predicted cost. With little evidence the predictions
+  shrink towards each action's mean cost, so the policy falls back to the
+  best constant action instead of guessing expensive ones; it directly
+  targets the selection metric.
+
+The head's logits are ``-predicted ADE / tau`` for ``ade_regression``, so the
+saved checkpoint is still a softmax policy. Checkpoints are selected by
+validation regret: the ADE of the chosen action minus the best achievable
+ADE (metres).
 
 Usage:
     python -m metadrive_rl.training.sft --data data/datasets/expert_v1 \\
@@ -42,15 +51,23 @@ def soft_targets(ade: torch.Tensor, tau: float) -> torch.Tensor:
     return torch.softmax(-ade / tau, dim=-1)
 
 
+def objective_loss(objective: str, logits: torch.Tensor, ade: torch.Tensor, tau: float) -> torch.Tensor:
+    if objective == "soft_ce":
+        return F.cross_entropy(logits, soft_targets(ade, tau))
+    if objective == "ade_regression":
+        return F.huber_loss(-logits * tau, ade)
+    raise ValueError(objective)
+
+
 @torch.no_grad()
-def evaluate(head: PolicyHead, data: dict, tau: float) -> dict:
+def evaluate(head: PolicyHead, data: dict, tau: float, objective: str = "soft_ce") -> dict:
     head.eval()
     logits = head(data["features"], data["state"])
     pred = logits.argmax(-1)
     chosen_ade = data["ade"].gather(1, pred[:, None])[:, 0]
     regret = chosen_ade - data["ade"].min(-1).values
     return {
-        "loss": float(F.cross_entropy(logits, soft_targets(data["ade"], tau))),
+        "loss": float(objective_loss(objective, logits, data["ade"], tau)),
         "top1": float((pred == data["label"]).float().mean()),
         "regret_mean_m": float(regret.mean()),
         "regret_median_m": float(regret.median()),
@@ -67,7 +84,9 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=1e-2)
-    parser.add_argument("--tau", type=float, default=0.5, help="soft-label temperature (m)")
+    parser.add_argument("--objective", choices=("ade_regression", "soft_ce"), default="ade_regression")
+    parser.add_argument("--tau", type=float, default=0.5,
+                        help="temperature (m): soft labels, or logits = -ADE/tau")
     parser.add_argument("--hidden", type=int, default=512)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-image", action="store_true",
@@ -83,26 +102,26 @@ def main() -> None:
             split["features"].zero_()
     head = PolicyHead(train["features"].shape[1], args.hidden).to(device)
     opt = torch.optim.AdamW(head.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-    targets = soft_targets(train["ade"], args.tau)
 
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "config.json").write_text(json.dumps({k: str(v) for k, v in vars(args).items()}, indent=1))
     log = open(args.out / "metrics.jsonl", "w")
     best = (float("inf"), None)
-    n = len(targets)
+    n = len(train["ade"])
     start = time.time()
     for epoch in range(args.epochs):
         head.train()
         perm = torch.randperm(n, device=device)
         for i in range(0, n, args.batch_size):
             idx = perm[i : i + args.batch_size]
-            loss = F.cross_entropy(head(train["features"][idx], train["state"][idx]), targets[idx])
+            logits = head(train["features"][idx], train["state"][idx])
+            loss = objective_loss(args.objective, logits, train["ade"][idx], args.tau)
             opt.zero_grad()
             loss.backward()
             opt.step()
         if epoch % 10 == 9 or epoch == args.epochs - 1:
-            row = {"epoch": epoch + 1, "train": evaluate(head, train, args.tau),
-                   "val": evaluate(head, val, args.tau)}
+            row = {"epoch": epoch + 1, "train": evaluate(head, train, args.tau, args.objective),
+                   "val": evaluate(head, val, args.tau, args.objective)}
             log.write(json.dumps(row) + "\n")
             log.flush()
             if row["val"]["regret_mean_m"] < best[0]:
