@@ -391,6 +391,24 @@ AIS variant adds a transition head predicting the next observation embedding
 | AIS-GRU, λ=0.3 | 328032 | 0.750 ± 0.045 | 0.731 |
 | AIS-GRU, λ=0.1 | 328032 | 0.772 ± 0.025 | 0.841 |
 
+**Conditioned on history ambiguity** (`reports/m5_ais_ambiguity.md`): a
+decision is ambiguous when the expert labels of its 20 most similar training
+frames (current image embedding only) disagree (≥ 0.6).
+
+Ambiguous = current-frame kNN (k=20) expert-label disagreement >= 0.6; 48% of val decisions.
+
+| encoder (3 seeds) | val regret all (m) | ambiguous frames | unambiguous frames |
+|---|---|---|---|
+| frame | 0.695 ± 0.072 | 0.548 ± 0.063 | 0.834 ± 0.127 |
+| stack | 0.660 ± 0.160 | 0.481 ± 0.122 | 0.829 ± 0.196 |
+| gru | 0.759 ± 0.057 | 0.510 ± 0.077 | 0.992 ± 0.071 |
+| ais (λ=0.3) | 0.750 ± 0.045 | 0.603 ± 0.020 | 0.887 ± 0.091 |
+
+On ambiguous frames the memory models are slightly better than the memoryless
+one (stack-3 −0.07 m, GRU −0.04 m vs. frame), the direction H1 predicts, but
+within one seed SD; AIS is worst there. H1: weak, non-significant hint;
+H2: not supported.
+
 No encoder separates from the memoryless baseline (seed spread up to ±0.16 m on
 4 val scenes); AIS at λ=1 collapses to the constant policy (the transition loss
 dominates), at λ=0.3 it matches the plain GRU. H1/H2 are **not supported in

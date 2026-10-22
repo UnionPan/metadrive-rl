@@ -57,6 +57,27 @@ def sequences(data_dir: Path, split: str, encoder: str) -> dict:
     }
 
 
+def frame_ambiguity(train: dict, data: dict, k: int = 20) -> torch.Tensor:
+    """Per position: how much the expert labels of the k most similar *training
+    frames* (cosine similarity of the current image embedding alone) disagree,
+    1 - share of the most common label. High values mark decisions the current
+    frame does not determine, where history should matter."""
+
+    def flat(d):
+        m = d["mask"].bool()
+        return F.normalize(torch.as_tensor(d["img"], device=m.device)[m], dim=-1), m
+
+    tr, tr_mask = flat(train)
+    tr_labels = train["cost"][tr_mask].argmin(-1)
+    q, q_mask = flat(data)
+    nn_idx = (q @ tr.T).topk(k, dim=-1).indices
+    labels = tr_labels[nn_idx]  # (N, k)
+    counts = F.one_hot(labels, train["cost"].shape[-1]).sum(1)
+    amb = torch.zeros(q_mask.shape, device=q_mask.device)
+    amb[q_mask] = 1.0 - counts.max(-1).values.float() / k
+    return amb
+
+
 def evaluate(model: HistoryPolicy, data: dict, proj: torch.Tensor | None) -> dict:
     model.eval()
     with torch.no_grad():
@@ -65,6 +86,10 @@ def evaluate(model: HistoryPolicy, data: dict, proj: torch.Tensor | None) -> dic
         choice = pred.argmin(-1)
         regret = data["cost"].gather(-1, choice[..., None])[..., 0] - data["cost"].min(-1).values
         out = {"regret_mean_m": float(regret[m].mean())}
+        if "ambiguous" in data:
+            amb = data["ambiguous"] & m
+            out["regret_ambiguous_m"] = float(regret[amb].mean())
+            out["regret_unambiguous_m"] = float(regret[m & ~amb].mean())
         if model.kind == "ais":
             out["transition_mse"] = float(_transition_loss(model, z, data, proj))
     return out
@@ -96,6 +121,7 @@ def main() -> None:
     parser.add_argument("--lambda-p", type=float, default=1.0)
     parser.add_argument("--batch-rollouts", type=int, default=8)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--ambiguity-threshold", type=float, default=0.5)
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
@@ -113,6 +139,8 @@ def main() -> None:
         for k in ("obs", "cost", "mask"):
             d[k] = d[k].to(device)
 
+    amb = frame_ambiguity(train, val)
+    val["ambiguous"] = amb >= args.ambiguity_threshold
     model = HistoryPolicy(args.kind, train["obs"].shape[-1], args.hidden).to(device)
     params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -144,7 +172,24 @@ def main() -> None:
             log.flush()
             if row["val"]["regret_mean_m"] < best[0]:
                 best = (row["val"]["regret_mean_m"], row)
-    summary = {"kind": args.kind, "params": params, "best": best[1], "seed": args.seed}
+                torch.save(
+                    {
+                        "state_dict": model.state_dict(),
+                        "kind": args.kind,
+                        "obs_dim": train["obs"].shape[-1],
+                        "hidden": args.hidden,
+                        "encoder": args.encoder,
+                        "metrics": row,
+                    },
+                    args.out / "best.pt",
+                )
+    summary = {
+        "kind": args.kind,
+        "params": params,
+        "best": best[1],
+        "seed": args.seed,
+        "val_ambiguous_fraction": float(val["ambiguous"][val["mask"].bool()].float().mean()),
+    }
     (args.out / "summary.json").write_text(json.dumps(summary, indent=1))
     print(json.dumps(summary))
 
