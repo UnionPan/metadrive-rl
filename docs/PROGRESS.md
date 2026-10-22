@@ -597,9 +597,33 @@ dangerous-miss rate is 36% (offline on expert frames: ~0.9 and ~6%). By scene:
   parked cars at the side; the head (trained on expert driving that never
   does this) does not report them. A speed governor would not fix these anyway.
 
-Next: a conservative head (pinball loss on a low quantile, so errors fall on
-the "closer" side) and closed-loop training frames (dense SFT collection),
-judged on closed-loop frames by the close-range bias, not only offline recall.
+**Perception v2.** Changes are judged on *closed-loop* frames: the dense SFT
+collection (61 train+val scenes, 14k frames, CATK). Validation is the
+closed-loop frames of the 4 val scenes plus 8 held-out train scenes (1,725
+frames). Frames after a rollout's first contact are dropped: the rollout has
+already failed, and the camera may sit inside the other car (89% "misses"
+there, mean bias +45 m), which is not a state a governor acts in.
+
+| gap head (3 seeds; closed-loop val frames, pre-contact) | recall < 10 m | dangerous miss | false alarm | bias, lead < 15 m |
+|---|---|---|---|---|
+| v1: MLP on 3×4 grid, expert frames (used in the first ablation) | 0.86 | 0.11 | 0.015 | +5.6 m |
+| MLP on 3×4 grid, expert + closed-loop frames | 0.82 | 0.11 | 0.012 | +5.2 m |
+| conv on 3×4 grid, expert + closed-loop | 0.86 | 0.070 | 0.012 | +3.7 m |
+| **conv on 6×8 grid, expert + closed-loop** | **0.87** | **0.062** | 0.014 | **+2.7 m** |
+| + min over the last 5 estimates (0.5 s) | 0.89–0.90 | 0.049–0.057 | 0.011–0.040 | +1.7–2.3 m |
+
+Missed close cars were plain in the images (a car filling the lower frame at
+3–7 m read as 20–25 m). A coarse 3×4 average pool blurs the strongest
+monocular distance cue, the image row of the car's bottom edge; a 6×8 grid
+with a small conv net keeps it. Closed-loop training frames alone did not
+help. A low-quantile (pinball) head did not reduce the bias either, so it is
+not used. Some misses are renders that break down far from the recorded path
+and cannot be fixed by perception.
+
+Governor v2 = conv 6×8 head (`arch_conv6x8_s0`, seed 0), min filter over 5
+calls, range 25 m. Running: always-FOLLOW + governor v2 on val_cl (GPU 2
+stack). The v1 runs for SFT and GRPO-it8 continue on GPU 1 to complete the
+original ablation.
 
 ## Tests
 
