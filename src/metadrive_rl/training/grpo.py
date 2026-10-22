@@ -47,7 +47,9 @@ def rollout_rewards(rollout_dir: Path, progress_weight: float) -> dict[str, tupl
     return out
 
 
-def build(rollout_dir: Path, batch_dir: Path, feature_dir: Path, progress_weight: float) -> dict:
+def build(
+    rollout_dir: Path, batch_dir: Path, feature_dir: Path, progress_weight: float, min_std: float
+) -> dict:
     from metadrive_rl.data.asl import find_rollouts, read_rollout
 
     rewards = rollout_rewards(rollout_dir, progress_weight)
@@ -63,7 +65,9 @@ def build(rollout_dir: Path, batch_dir: Path, feature_dir: Path, progress_weight
             continue  # failed or retried rollout without an aggregated score
         scene, reward = rewards[log.rollout_uuid]
         mean, std = stats[scene]
-        advantage = (reward - mean) / (std + 1e-6)
+        # The std floor keeps near-identical groups (often just CATK traffic
+        # noise) from being amplified to unit-variance advantages.
+        advantage = (reward - mean) / max(std, min_std)
         for d in log.decisions:
             if not d["is_decision"]:
                 continue
@@ -100,6 +104,7 @@ def build(rollout_dir: Path, batch_dir: Path, feature_dir: Path, progress_weight
         "reward_mean": float(np.mean([r for _, r in rewards.values()])),
         "policy_versions": sorted({r["policy_version"] for r in rows}),
         "progress_weight": progress_weight,
+        "min_std": min_std,
     }
     (batch_dir / "manifest.json").write_text(json.dumps(manifest, indent=1))
     return manifest
@@ -195,6 +200,7 @@ def main() -> None:
     b.add_argument("batch_dir", type=Path)
     b.add_argument("--features", type=Path, required=True)
     b.add_argument("--progress-weight", type=float, default=0.0)
+    b.add_argument("--min-std", type=float, default=0.05, help="floor on group reward std")
     u = sub.add_parser("update")
     u.add_argument("batch_dir", type=Path)
     u.add_argument("--policy", type=Path, required=True)
@@ -203,12 +209,14 @@ def main() -> None:
     u.add_argument("--version", required=True)
     u.add_argument("--clip", type=float, default=0.2)
     u.add_argument("--kl-coef", type=float, default=0.05)
-    u.add_argument("--epochs", type=int, default=4)
+    u.add_argument("--epochs", type=int, default=2)
     u.add_argument("--lr", type=float, default=1e-4)
     u.add_argument("--batch-size", type=int, default=256)
     args = parser.parse_args()
     if args.cmd == "build":
-        result = build(args.rollout_dir, args.batch_dir, args.features, args.progress_weight)
+        result = build(
+            args.rollout_dir, args.batch_dir, args.features, args.progress_weight, args.min_std
+        )
     else:
         result = update(
             args.batch_dir,

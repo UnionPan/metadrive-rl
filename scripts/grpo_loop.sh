@@ -9,7 +9,8 @@
 # Usage: scripts/grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]
 # Env:   TEMPERATURE (1.0), KL_COEF (0.05), PROGRESS_WEIGHT (0.2), SPLIT (train),
 #        SPLITS (splits file, e.g. a training subset), STEPS (sim steps per episode, 200),
-#        TOPOLOGY / METADRIVE_RENDERER_ADDRS (see run_episode.sh)
+#        TOPOLOGY / METADRIVE_RENDERER_ADDRS (see run_episode.sh),
+#        EVAL_SPLIT (if set, evaluate each new checkpoint greedily on it), EVAL_ROLLOUTS (2)
 set -euo pipefail
 
 SFT=$(realpath "${1:?usage: grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]}")
@@ -54,4 +55,15 @@ print(json.dumps({"iteration": d.rsplit("it", 1)[1], "rollouts": build["rollouts
                   **{k: update["final"][k] for k in ("kl_to_ref", "entropy", "clip_fraction")}}))
 EOF
   policy=$dir/policy.pt
+  if [[ -n "${EVAL_SPLIT:-}" ]]; then
+    cat > "$dir/eval_policy.yaml" <<YAML
+policy: {type: neural, checkpoint: $policy}
+greedy: true
+decision_period_s: 0.5
+YAML
+    SPLITS=${EVAL_SPLITS:-$HERE/../configs/evaluation/splits.yaml} "$HERE/evaluate.sh" \
+      "$dir/eval_policy.yaml" "$EVAL_SPLIT" "$dir/eval" "${EVAL_ROLLOUTS:-2}" \
+      eval.video.render_video=False > "$dir/eval.log" 2>&1
+    "$PY" -m metadrive_rl.evaluation.summarize "$dir/eval=it$it" --out "$dir/eval.md"
+  fi
 done
