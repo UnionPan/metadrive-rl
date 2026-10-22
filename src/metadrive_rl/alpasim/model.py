@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 RECORD_KEY = "metadrive"
 REANCHOR_JUMP_M = 1.5
+FD_POSES = 4
 
 
 @dataclass
@@ -57,6 +58,7 @@ class _SessionState:
     last_obs_time_us: int | None = None
     # Ego's lateral offset from the route at the previous call.
     route_offset_m: float | None = None
+    kinematics_source: str = "dynamic_state"
     step: int = 0
     history: list = field(default_factory=list)
 
@@ -88,6 +90,28 @@ class _SessionTable:
             self._states[key] = state
         state.next_inference_seed += 1
         return state
+
+
+def _kinematics(p: PredictionInput) -> tuple[float, float, str]:
+    """Ego speed and acceleration, with their source.
+
+    The runtime's dynamic state reads exactly zero when it is not maintained
+    (e.g. during long force-GT replays); then fall back to finite differences
+    of the ego pose history, as the stock servicer's docstring intends.
+    """
+    if p.speed != 0.0 or p.acceleration != 0.0:
+        return float(p.speed), float(p.acceleration), "dynamic_state"
+    poses = p.ego_pose_history[-FD_POSES:]
+    if len(poses) < 3:
+        return 0.0, 0.0, "dynamic_state"
+    t = np.array([q.timestamp_us for q in poses], dtype=float) / 1e6
+    xy = np.array([(q.pose.vec.x, q.pose.vec.y) for q in poses])
+    dt = np.diff(t)
+    if np.any(dt <= 0):
+        return 0.0, 0.0, "dynamic_state"
+    v = np.linalg.norm(np.diff(xy, axis=0), axis=1) / dt
+    accel = (v[-1] - v[-2]) / (0.5 * (dt[-1] + dt[-2]))
+    return float(v[-1]), float(accel), "pose_history"
 
 
 def _route_xy(route) -> np.ndarray | None:
@@ -198,10 +222,11 @@ class MetaDriveModel(BaseTrajectoryModel):
         timestamp_us, image = p.camera_images[self._camera_ids[0]][-1]
         if isinstance(image, torch.Tensor):
             image = image.cpu().numpy()
+        speed, accel, state.kinematics_source = _kinematics(p)
         return Observation(
             timestamp_us=int(timestamp_us),
-            speed_mps=float(p.speed),
-            accel_mps2=float(p.acceleration),
+            speed_mps=speed,
+            accel_mps2=accel,
             route_xy=_route_xy(p.route),
             command=int(p.command),
             lane_offset_m=state.lane_offset_m,
@@ -251,6 +276,7 @@ class MetaDriveModel(BaseTrajectoryModel):
                 "log_prob": decision.log_prob,
                 "probs": np.round(decision.probs, 5).tolist() if is_decision else None,
                 "speed_mps": obs.speed_mps,
+                "speed_source": state.kinematics_source,
                 "command": obs.command,
                 "lane_offset_m": state.lane_offset_m,
                 "lateral_elapsed_m": round(state.travelled_since_target_m, 3),

@@ -21,7 +21,7 @@ class _Route:
 
 def _inputs(poses, seed, t_us, speed=8.0):
     # Like the servicer, hand over a fresh list holding the same pose objects.
-    poses = sorted(poses, key=lambda p: p[0])
+    poses = list(poses)
     # The servicer passes plain tuples, not CameraFrame instances.
     frame = (t_us, np.zeros((64, 96, 3), np.uint8))
     return base.PredictionInput(
@@ -118,3 +118,19 @@ def test_decision_images_are_saved(tmp_path):
     saved = sorted(p.stem for p in tmp_path.glob("*.jpg"))
     assert saved == sorted({r["decision_id"] for r in recs})
     assert len(saved) == 2
+
+
+def test_speed_falls_back_to_pose_history_when_dynamic_state_is_zero():
+    from types import SimpleNamespace as NS
+
+    def pose(t_us, x):
+        return NS(timestamp_us=t_us, pose=NS(vec=NS(x=x, y=0.0, z=0.0)))
+
+    model = _model("fixed:FOLLOW")
+    # 4 m/s constant: x advances 0.4 m per 0.1 s.
+    poses = [pose(k * 100_000, 0.4 * k) for k in range(5)]
+    p = _inputs(poses, 10, 400_000, speed=0.0)
+    p.ego_pose_history = poses
+    rec = _record(model.predict(p))
+    assert rec["speed_source"] == "pose_history"
+    assert rec["speed_mps"] == pytest.approx(4.0)
