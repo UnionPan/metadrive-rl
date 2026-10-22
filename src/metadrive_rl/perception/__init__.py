@@ -17,7 +17,9 @@ ENCODERS = {
     # appear), needed for dense quantities such as the distance to a lead car.
     "dinov2-base-grid": ("facebook/dinov2-base", (448, 280), "grid"),
     "dinov2-base-grid6x8": ("facebook/dinov2-base", (448, 280), "grid6x8"),
+    "dinov3-base": ("facebook/dinov3-vitb16-pretrain-lvd1689m", (448, 288), "cls_mean"),
     "dinov3-base-grid": ("facebook/dinov3-vitb16-pretrain-lvd1689m", (448, 288), "grid"),
+    "dinov3-base-grid6x8": ("facebook/dinov3-vitb16-pretrain-lvd1689m", (448, 288), "grid6x8"),
 }
 GRID_HW = (3, 4)
 
