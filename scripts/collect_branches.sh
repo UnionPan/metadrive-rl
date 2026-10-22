@@ -48,6 +48,7 @@ YAML
     runtime.simulation_config.n_sim_steps=$STEPS \
     eval.video.render_video=False \
     trafficsim=catk \
+    eval.allow_aggregation_with_failed_rollouts=True \
     > "$OUT/$label.log" 2>&1
   echo "exit=$?"
 done
