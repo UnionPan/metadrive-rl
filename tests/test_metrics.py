@@ -23,3 +23,10 @@ def test_coverage_exit_is_first_timestamp_beyond_threshold(tmp_path):
 def test_no_exit_while_within_corridor(tmp_path):
     _write(tmp_path, [0.1, 3.5, 3.9])
     assert coverage_exit_us(tmp_path) is None
+
+
+def test_simulator_error_detection():
+    from metadrive_rl.evaluation.metrics import simulator_error
+
+    assert simulator_error({"metrics": {"error": "CATK failed", "rollout_id": "r"}})
+    assert not simulator_error({"metrics": {"progress": 0.4, "collision_at_fault": 1.0}})

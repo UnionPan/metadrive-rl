@@ -31,6 +31,7 @@ import polars as pl
 import torch
 from PIL import Image
 
+from metadrive_rl.evaluation.metrics import simulator_error
 from metadrive_rl.perception import FrozenEncoder
 from metadrive_rl.planner import HighLevelAction
 from metadrive_rl.policy.features import state_features
@@ -43,6 +44,8 @@ def outcomes(branch_dir: Path) -> pl.DataFrame:
     for summary in sorted(branch_dir.glob("*/sim/aggregate/results-summary.json")):
         action = HighLevelAction.from_text(_label_to_action(summary.parts[-4])).to_text()
         for r in json.loads(summary.read_text())["rollouts"]:
+            if simulator_error(r):
+                continue
             m = r["metrics"]
             rows.append(
                 {

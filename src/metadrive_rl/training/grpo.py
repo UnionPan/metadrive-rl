@@ -32,16 +32,10 @@ import polars as pl
 import torch
 import torch.nn.functional as F
 
-from metadrive_rl.evaluation.metrics import coverage_exit_us
+from metadrive_rl.evaluation.metrics import coverage_exit_us, simulator_error
 from metadrive_rl.policy.features import state_features
 from metadrive_rl.policy.neural import PolicyHead, save_checkpoint
 from metadrive_rl.training.sft import stack_context
-
-
-def simulator_error(rollout: dict) -> bool:
-    """Rollouts the simulator aborted (e.g. a CATK RPC failure) carry an error
-    instead of metrics; their score says nothing about the policy."""
-    return "error" in rollout["metrics"]
 
 
 def rollout_rewards(rollout_dir: Path, progress_weight: float) -> dict[str, tuple[str, float]]:

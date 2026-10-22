@@ -59,3 +59,10 @@ def coverage_exit_us(
     )
     out = df.filter(pl.col("values") >= max_dist_m)["timestamps_us"]
     return int(out.min()) if len(out) else None
+
+
+def simulator_error(rollout: dict) -> bool:
+    """Whether an AlpaSim results-summary rollout was aborted by the simulator
+    (e.g. a CATK RPC failure). Such entries carry an error instead of metrics;
+    their score of 0 says nothing about the policy and must be excluded."""
+    return "error" in rollout["metrics"]
