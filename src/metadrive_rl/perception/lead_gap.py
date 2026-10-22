@@ -6,8 +6,8 @@ policy uses plus ego speed. Trained on privileged simulator labels
 (``metadrive_rl.data.lead_gap``); at drive time it only sees camera features.
 
 Usage:
-    python -m metadrive_rl.perception.lead_gap --data data/datasets/expert_v2 \\
-        --encoder dinov2-base --context 3 --out runs/gap/<name>
+    python -m metadrive_rl.perception.lead_gap --data data/datasets/gap_dense \\
+        --encoder dinov2-base-grid --context 1 --holdout-scenes 8 --out runs/gap/<name>
 """
 
 from __future__ import annotations
@@ -52,17 +52,33 @@ def load_gap_head(path: str | Path, device: str = "cpu") -> tuple[GapHead, dict]
     return head, ckpt
 
 
-def _split(data: Path, split: str, encoder: str, context: int, device: torch.device) -> dict:
+def _load(data: Path, split: str, encoder: str, context: int) -> tuple[pl.DataFrame, dict]:
     from metadrive_rl.training.sft import stack_context
 
     df = pl.read_parquet(data / f"{split}.parquet")
     feats = stack_context(df, np.load(data / f"{split}.{encoder}.npy"), context)
-    speed = np.array(df["state"].to_list())[:, 0] * 10.0  # state[0] = speed / 10
-    return {
-        "x": torch.tensor(feats, device=device),
-        "v": torch.tensor(speed, dtype=torch.float32, device=device),
-        "y": torch.tensor(np.load(data / f"{split}.lead_gap.npy"), device=device),
-    }
+    if "lead_gap_m" in df.columns:  # dense gap dataset (build_gap_dataset)
+        speed, gap = df["speed_mps"].to_numpy(), df["lead_gap_m"].to_numpy()
+    else:  # decision dataset with a separate label file
+        speed = np.array(df["state"].to_list())[:, 0] * 10.0  # state[0] = speed / 10
+        gap = np.load(data / f"{split}.lead_gap.npy")
+    return df, {"x": feats, "v": speed.astype(np.float32), "y": gap.astype(np.float32)}
+
+
+def _splits(
+    data: Path, encoder: str, context: int, holdout_scenes: int, device: torch.device
+) -> tuple[dict, dict, list[str]]:
+    """Train and val tensors; ``holdout_scenes`` train scenes (seeded) join val."""
+    train_df, train = _load(data, "train", encoder, context)
+    _, val = _load(data, "val", encoder, context)
+    scenes = sorted(train_df["scene_id"].unique())
+    held = sorted(np.random.default_rng(0).permutation(scenes)[:holdout_scenes].tolist())
+    if held:
+        mask = train_df["scene_id"].is_in(held).to_numpy()
+        val = {k: np.concatenate([val[k], train[k][mask]]) for k in val}
+        train = {k: v[~mask] for k, v in train.items()}
+    to_t = lambda d: {k: torch.tensor(v, device=device) for k, v in d.items()}  # noqa: E731
+    return to_t(train), to_t(val), held
 
 
 @torch.no_grad()
@@ -90,12 +106,14 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--holdout-scenes", type=int, default=0, help="train scenes moved to validation"
+    )
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train = _split(args.data, "train", args.encoder, args.context, device)
-    val = _split(args.data, "val", args.encoder, args.context, device)
+    train, val, held = _splits(args.data, args.encoder, args.context, args.holdout_scenes, device)
     head = GapHead(train["x"].shape[1]).to(device)
     opt = torch.optim.AdamW(head.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     args.out.mkdir(parents=True, exist_ok=True)
@@ -125,7 +143,10 @@ def main() -> None:
                     args.out / "best.pt",
                 )
     (args.out / "summary.json").write_text(
-        json.dumps({"best": best[1], "seed": args.seed}, indent=1)
+        json.dumps(
+            {"best": best[1], "seed": args.seed, "data": str(args.data), "holdout_scenes": held},
+            indent=1,
+        )
     )
     print(json.dumps(best[1], indent=1))
 
