@@ -16,7 +16,8 @@ from pathlib import Path
 import numpy as np
 from alpasim_grpc.v0.logging_pb2 import LogEntry
 
-from metadrive_rl.alpasim.model import RECORD_KEY
+# Key of the decision record in the driver's ``reasoning_text`` JSON.
+RECORD_KEY = "metadrive"
 
 
 @dataclass

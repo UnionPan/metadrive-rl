@@ -26,6 +26,7 @@ class Observation:
     lane_offset_m: float  # committed lane offset from the planner state
     image: np.ndarray | None = None  # HWC uint8, front camera
     features: np.ndarray | None = None  # frozen-encoder embedding of ``image``
+    lead_gap_m: float | None = None  # gap to the lead car estimated from ``image``
 
 
 @dataclass

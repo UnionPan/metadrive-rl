@@ -169,3 +169,53 @@ def test_dense_images_saved_every_step(tmp_path):
     recs = [_record(model.predict(_inputs(poses, 10 + k, k * 100_000))) for k in range(6)]
     saved = sorted(p.stem for p in tmp_path.glob("*.jpg"))
     assert saved == sorted(f"{r['decision_id']}_{r['step']}" for r in recs)
+
+
+class _ConstGapHead:
+    def __init__(self, gap):
+        import torch
+
+        self.gap, self._p = gap, torch.zeros(1)
+
+    def parameters(self):
+        return iter([self._p])
+
+    def __call__(self, x, v):
+        import torch
+
+        return torch.full((len(x),), self.gap)
+
+
+class _GridEncoder:
+    """Five-wide features whose first two entries stand for the pooled part."""
+
+    def encode(self, images):
+        return np.tile(np.arange(5, dtype=np.float32), (len(images), 1))
+
+
+@pytest.mark.parametrize("gap,capped", [(4.0, True), (60.0, False)])
+def test_perceived_gap_governs_every_step(gap, capped):
+    model = _model("fixed:CRUISE@15", decision_period_s=0.5)
+    model.encoder, model.gap_head = _GridEncoder(), _ConstGapHead(gap)
+    poses = [(0, object())]
+    for k in range(3):  # a decision, then two held steps
+        rec = _record(model.predict(_inputs(poses, 10 + k, k * 100_000)))
+        assert rec["lead_gap_est_m"] == gap
+        assert rec["flags"]["gap_capped"] is capped
+
+
+def test_policy_gets_pooled_slice_of_grid_features():
+    from metadrive_rl.policy.neural import NeuralPolicy, PolicyHead
+
+    seen = []
+
+    class RecordingPolicy(NeuralPolicy):
+        def distribution(self, obs):
+            seen.append(obs.features.tolist())
+            return super().distribution(obs)
+
+    model = _model("rule", decision_period_s=0.5)
+    model.policy = RecordingPolicy(PolicyHead(2), "fake", "test", context=1)
+    model.encoder, model.gap_head, model._policy_dim = _GridEncoder(), _ConstGapHead(20.0), 2
+    model.predict(_inputs([(0, object())], 10, 0))
+    assert seen == [[0.0, 1.0]]

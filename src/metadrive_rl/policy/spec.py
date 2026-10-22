@@ -30,6 +30,10 @@ class PolicySpec:
     # Save the image at every driver call (named <decision_id>_<step>.jpg)
     # instead of only at decisions; for dense perception datasets.
     image_every_step: bool = False
+    # Gap-head checkpoint (metadrive_rl.perception.lead_gap). When set, the
+    # lead gap is estimated from the camera at every driver call and drives
+    # the planner's speed governor for all candidates.
+    gap_head: str | None = None
     planner: dict[str, Any] = field(default_factory=dict)
 
     @classmethod

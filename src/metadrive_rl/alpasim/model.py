@@ -29,6 +29,8 @@ from alpasim_driver.models.base import (
 )
 from PIL import Image
 
+from metadrive_rl.data.asl import RECORD_KEY
+from metadrive_rl.data.lead_gap import NO_LEAD_M
 from metadrive_rl.planner import ACTIONS, ModeConditionedPlanner, PlannerConfig
 from metadrive_rl.planner.trajectory import RoutePath
 from metadrive_rl.policy.base import Decision, Observation, decide
@@ -36,7 +38,6 @@ from metadrive_rl.policy.spec import PolicySpec, build_policy
 
 logger = logging.getLogger(__name__)
 
-RECORD_KEY = "metadrive"
 REANCHOR_JUMP_M = 1.5
 FD_POSES = 4
 
@@ -144,11 +145,27 @@ class MetaDriveModel(BaseTrajectoryModel):
                     f"policy expects encoder {trained_encoder}, spec has {spec.encoder}"
                 )
             spec.encoder = {"name": trained_encoder}
+        self.gap_head = None
+        policy_encoder = spec.encoder["name"] if spec.encoder is not None else None
+        if spec.gap_head is not None:
+            from metadrive_rl.perception.lead_gap import load_gap_head
+
+            self.gap_head, gap_ckpt = load_gap_head(spec.gap_head, device or "cpu")
+            if gap_ckpt["context"] != 1:
+                raise ValueError("the governor needs a single-frame gap head")
+            spec.encoder = {"name": gap_ckpt["encoder"]}
         self.encoder = None
+        # Width of the policy's features when the encoder emits more (a grid
+        # encoder's output begins with the pooled features of its backbone).
+        self._policy_dim = None
         if spec.encoder is not None:
-            from metadrive_rl.perception import build_encoder
+            from metadrive_rl.perception import ENCODERS, build_encoder
 
             self.encoder = build_encoder(spec.encoder, device)
+            if policy_encoder not in (None, spec.encoder["name"]):
+                if ENCODERS[policy_encoder][:2] != ENCODERS[spec.encoder["name"]][:2]:
+                    raise ValueError(f"{policy_encoder} and the gap head's encoder differ")
+                self._policy_dim = 2 * self.encoder.model.config.hidden_size
         self.feature_dir = Path(spec.feature_dir) if spec.feature_dir else None
         self.image_dir = Path(spec.image_dir) if spec.image_dir else None
         for d in (self.feature_dir, self.image_dir):
@@ -187,10 +204,20 @@ class MetaDriveModel(BaseTrajectoryModel):
             self._follow_route_reanchoring(s, _route_xy(p.route))
         observations = [self._observe(p, s) for p, s in zip(prediction_inputs, states, strict=True)]
         due = [i for i, s in enumerate(states) if self._decision_due(s, observations[i])]
-        if self.encoder is not None and due:
-            feats = self.encoder.encode([observations[i].image for i in due])
+        # The governor needs a fresh gap estimate at every call.
+        encode = list(range(len(states))) if self.gap_head is not None else due
+        if self.encoder is not None and encode:
+            feats = np.asarray(self.encoder.encode([observations[i].image for i in encode]))
+            if self.gap_head is not None:
+                gaps = self._estimate_gaps(feats, [observations[i].speed_mps for i in encode])
+                for i, g in zip(encode, gaps, strict=True):
+                    observations[i].lead_gap_m = float(g)
+            if self._policy_dim is not None:
+                feats = feats[:, : self._policy_dim]
             context = getattr(self.policy, "context", 1)
-            for i, f in zip(due, feats, strict=True):
+            for i, f in zip(encode, feats, strict=True):
+                if i not in due:
+                    continue
                 history = states[i].history
                 history.insert(0, f)
                 del history[context:]
@@ -199,6 +226,13 @@ class MetaDriveModel(BaseTrajectoryModel):
                     stacked[k * len(f) : (k + 1) * len(f)] = past
                 observations[i].features = stacked
         return [self._step(observations[i], states[i], i in due) for i in range(len(states))]
+
+    @torch.no_grad()
+    def _estimate_gaps(self, feats: np.ndarray, speeds: list[float]) -> np.ndarray:
+        device = next(self.gap_head.parameters()).device
+        x = torch.from_numpy(feats).float().to(device)
+        v = torch.tensor(speeds, dtype=torch.float32, device=device)
+        return self.gap_head(x, v).cpu().numpy()
 
     def _follow_route_reanchoring(self, state: _SessionState, route_xy: np.ndarray | None) -> None:
         """Keep the committed lane when the route jumps laterally under the ego.
@@ -286,6 +320,8 @@ class MetaDriveModel(BaseTrajectoryModel):
             obs.route_xy,
             state.base_offset_m,
             state.travelled_since_target_m,
+            # A saturated estimate means no lead in range.
+            obs.lead_gap_m if obs.lead_gap_m is not None and obs.lead_gap_m < NO_LEAD_M else None,
         )
         chosen = plans[decision.action_index]
 
@@ -301,6 +337,7 @@ class MetaDriveModel(BaseTrajectoryModel):
                 "probs": np.round(decision.probs, 5).tolist() if is_decision else None,
                 "speed_mps": obs.speed_mps,
                 "speed_source": state.kinematics_source,
+                "lead_gap_est_m": None if obs.lead_gap_m is None else round(obs.lead_gap_m, 2),
                 "command": obs.command,
                 "lane_offset_m": state.lane_offset_m,
                 "lateral_elapsed_m": round(state.travelled_since_target_m, 3),
