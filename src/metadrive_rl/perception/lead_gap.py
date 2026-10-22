@@ -62,13 +62,21 @@ def _load(data: Path, split: str, encoder: str, context: int) -> tuple[pl.DataFr
     else:  # decision dataset with a separate label file
         speed = np.array(df["state"].to_list())[:, 0] * 10.0  # state[0] = speed / 10
         gap = np.load(data / f"{split}.lead_gap.npy")
-    return df, {"x": feats, "v": speed.astype(np.float32), "y": gap.astype(np.float32)}
+    source = df["source"].to_numpy() if "source" in df.columns else np.full(len(df), "")
+    return df, {"x": feats, "v": speed.astype(np.float32), "y": gap.astype(np.float32), "s": source}
 
 
 def _splits(
-    data: Path, encoder: str, context: int, holdout_scenes: int, device: torch.device
+    data: Path,
+    encoder: str,
+    context: int,
+    holdout_scenes: int,
+    device: torch.device,
+    train_sources: list[str] | None = None,
+    val_sources: list[str] | None = None,
 ) -> tuple[dict, dict, list[str]]:
-    """Train and val tensors; ``holdout_scenes`` train scenes (seeded) join val."""
+    """Train and val tensors; ``holdout_scenes`` train scenes (seeded) join val.
+    ``*_sources`` keep only rows from those collections (dense datasets)."""
     train_df, train = _load(data, "train", encoder, context)
     _, val = _load(data, "val", encoder, context)
     scenes = sorted(train_df["scene_id"].unique())
@@ -77,7 +85,14 @@ def _splits(
         mask = train_df["scene_id"].is_in(held).to_numpy()
         val = {k: np.concatenate([val[k], train[k][mask]]) for k in val}
         train = {k: v[~mask] for k, v in train.items()}
-    to_t = lambda d: {k: torch.tensor(v, device=device) for k, v in d.items()}  # noqa: E731
+    if train_sources:
+        train = {k: v[np.isin(train["s"], train_sources)] for k, v in train.items()}
+    if val_sources:
+        val = {k: v[np.isin(val["s"], val_sources)] for k, v in val.items()}
+
+    def to_t(d: dict) -> dict:
+        return {k: torch.tensor(v, device=device) for k, v in d.items() if k != "s"}
+
     return to_t(train), to_t(val), held
 
 
@@ -101,6 +116,8 @@ def main() -> None:
     parser.add_argument(
         "--eval", type=Path, nargs="+", help="only score these heads on the validation frames"
     )
+    parser.add_argument("--train-sources", nargs="+", help="collections to train on")
+    parser.add_argument("--val-sources", nargs="+", help="collections to validate on")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
@@ -118,7 +135,15 @@ def main() -> None:
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train, val, held = _splits(args.data, args.encoder, args.context, args.holdout_scenes, device)
+    train, val, held = _splits(
+        args.data,
+        args.encoder,
+        args.context,
+        args.holdout_scenes,
+        device,
+        args.train_sources,
+        args.val_sources,
+    )
     if args.eval:
         for path in args.eval:
             print(path, json.dumps(metrics(load_gap_head(path, device)[0], val)))
@@ -161,6 +186,8 @@ def main() -> None:
                 "best": best[1],
                 "seed": args.seed,
                 "quantile": args.quantile,
+                "train_sources": args.train_sources,
+                "val_sources": args.val_sources,
                 "data": str(args.data),
                 "holdout_scenes": held,
             },
