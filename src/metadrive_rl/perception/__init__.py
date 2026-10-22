@@ -16,22 +16,36 @@ ENCODERS = {
     # Keeps a coarse spatial grid of patch features (where / how large things
     # appear), needed for dense quantities such as the distance to a lead car.
     "dinov2-base-grid": ("facebook/dinov2-base", (448, 280), "grid"),
+    "dinov2-base-grid6x8": ("facebook/dinov2-base", (448, 280), "grid6x8"),
     "dinov3-base-grid": ("facebook/dinov3-vitb16-pretrain-lvd1689m", (448, 288), "grid"),
 }
 GRID_HW = (3, 4)
 
 
+def grid_hw(name: str) -> tuple[int, int] | None:
+    """Pooled patch grid of an encoder ("grid" = GRID_HW, "gridHxW"), else None."""
+    pooling = ENCODERS[name][2]
+    if not pooling.startswith("grid"):
+        return None
+    if pooling == "grid":
+        return GRID_HW
+    h, w = pooling.removeprefix("grid").split("x")
+    return int(h), int(w)
+
+
 class FrozenEncoder:
     """DINO backbone in FP16 (Turing has no BF16).
 
-    ``cls_mean`` pooling returns [CLS, mean(patches)]; ``grid`` additionally
-    appends patch features average-pooled to a ``GRID_HW`` grid.
+    ``cls_mean`` pooling returns [CLS, mean(patches)]; ``grid``/``gridHxW``
+    additionally append patch features average-pooled to that grid
+    (channel-major: C x H x W).
     """
 
     def __init__(self, name: str, device: torch.device | str):
         from transformers import AutoModel
 
         model_id, self.input_wh, self.pooling = ENCODERS[name]
+        self.grid_hw = grid_hw(name)
         self.name = name
         self.device = torch.device(device)
         self.model = AutoModel.from_pretrained(model_id, dtype=torch.float16)
@@ -41,7 +55,7 @@ class FrozenEncoder:
 
     @property
     def dim(self) -> int:
-        cells = GRID_HW[0] * GRID_HW[1] if self.pooling == "grid" else 0
+        cells = self.grid_hw[0] * self.grid_hw[1] if self.grid_hw else 0
         return (2 + cells) * self.model.config.hidden_size
 
     @torch.no_grad()
@@ -57,9 +71,9 @@ class FrozenEncoder:
         h, w = self.input_wh[1] // patch, self.input_wh[0] // patch
         patches = tokens[:, -h * w :]  # DINOv3 puts register tokens before the patches
         parts = [tokens[:, 0], patches.mean(1)]
-        if self.pooling == "grid":
+        if self.grid_hw:
             grid = patches.transpose(1, 2).reshape(len(x), -1, h, w)
-            parts.append(F.adaptive_avg_pool2d(grid.float(), GRID_HW).flatten(1).half())
+            parts.append(F.adaptive_avg_pool2d(grid.float(), self.grid_hw).flatten(1).half())
         return torch.cat(parts, dim=-1).float().cpu().numpy()
 
 

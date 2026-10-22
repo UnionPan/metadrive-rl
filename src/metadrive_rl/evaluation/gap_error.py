@@ -1,7 +1,9 @@
 """Closed-loop accuracy of the camera gap estimate that drove the governor.
 
 Compares the ``lead_gap_est_m`` the driver logged at every call with the
-privileged gap from the same rollout's actor poses.
+privileged gap from the same rollout's actor poses, up to the first contact
+(afterwards the rollout has failed and the camera may sit inside the other
+car).
 
 Usage: python -m metadrive_rl.evaluation.gap_error <run-dir>... [--splits ...]
 """
@@ -17,6 +19,8 @@ import yaml
 
 from metadrive_rl.data.asl import find_rollouts, read_rollout
 from metadrive_rl.data.lead_gap import actor_half_lengths, gap_at, lead_gaps
+
+CONTACT_M = 0.3
 
 
 def gap_metrics(pred: np.ndarray, true: np.ndarray) -> dict:
@@ -59,9 +63,13 @@ def main() -> None:
                 path, actor_half_lengths(args.scene_dir / f"{uuid[log.scene_id]}.usdz")
             )
             for d in log.decisions:
-                if d.get("lead_gap_est_m") is not None:
-                    pred.append(d["lead_gap_est_m"])
-                    true.append(gap_at(ts, gaps, d["time_us"]))
+                if d.get("lead_gap_est_m") is None:
+                    continue
+                gap = gap_at(ts, gaps, d["time_us"])
+                if gap < CONTACT_M:
+                    break
+                pred.append(d["lead_gap_est_m"])
+                true.append(gap)
         if not pred:
             print(f"{run}: no gap estimates logged")
             continue

@@ -28,20 +28,57 @@ SCALE_M = 10.0
 
 
 class GapHead(nn.Module):
-    def __init__(self, feature_dim: int, hidden: int = 256, dropout: float = 0.1):
+    """MLP on the features; with ``grid_hw``, the pooled patch grid first goes
+    through a small conv net, which keeps *where* in the image things are
+    (a close car's bottom edge sits low in the frame)."""
+
+    def __init__(
+        self,
+        feature_dim: int,
+        hidden: int = 256,
+        dropout: float = 0.1,
+        grid_hw: tuple[int, int] | None = None,
+        conv_channels: int = 64,
+    ):
         super().__init__()
+        self.config = {
+            "feature_dim": feature_dim,
+            "hidden": hidden,
+            "dropout": dropout,
+            "grid_hw": list(grid_hw) if grid_hw else None,
+            "conv_channels": conv_channels,
+        }
+        self.grid_hw = tuple(grid_hw) if grid_hw else None
+        mlp_in = feature_dim + 1
+        if self.grid_hw:
+            h, w = self.grid_hw
+            self.width = feature_dim // (2 + h * w)  # features = [CLS, mean, grid]
+            self.global_norm = nn.LayerNorm(2 * self.width)
+            self.conv = nn.Sequential(
+                nn.GroupNorm(1, self.width),
+                nn.Conv2d(self.width, conv_channels, 1),
+                nn.GELU(),
+                nn.Conv2d(conv_channels, conv_channels, 3, padding=1),
+                nn.GELU(),
+            )
+            mlp_in = 2 * self.width + conv_channels * h * w + 1
         self.net = nn.Sequential(
-            nn.LayerNorm(feature_dim + 1),
-            nn.Linear(feature_dim + 1, hidden),
+            nn.Identity() if self.grid_hw else nn.LayerNorm(mlp_in),
+            nn.Linear(mlp_in, hidden),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(hidden, 1),
         )
-        self.config = {"feature_dim": feature_dim, "hidden": hidden, "dropout": dropout}
 
     def forward(self, features: torch.Tensor, speed_mps: torch.Tensor) -> torch.Tensor:
         """Predicted gap in metres, clamped to [0, NO_LEAD_M]."""
-        x = torch.cat([features, speed_mps[:, None] / 10.0], -1)
+        v = speed_mps[:, None] / 10.0
+        if self.grid_hw:
+            n = 2 * self.width
+            grid = features[:, n:].reshape(len(features), self.width, *self.grid_hw)
+            x = torch.cat([self.global_norm(features[:, :n]), self.conv(grid).flatten(1), v], -1)
+        else:
+            x = torch.cat([features, v], -1)
         return (self.net(x)[:, 0] * SCALE_M).clamp(0.0, NO_LEAD_M)
 
 
@@ -63,7 +100,24 @@ def _load(data: Path, split: str, encoder: str, context: int) -> tuple[pl.DataFr
         speed = np.array(df["state"].to_list())[:, 0] * 10.0  # state[0] = speed / 10
         gap = np.load(data / f"{split}.lead_gap.npy")
     source = df["source"].to_numpy() if "source" in df.columns else np.full(len(df), "")
-    return df, {"x": feats, "v": speed.astype(np.float32), "y": gap.astype(np.float32), "s": source}
+    data = {"x": feats, "v": speed.astype(np.float32), "y": gap.astype(np.float32), "s": source}
+    if "rollout_uuid" in df.columns and "lead_gap_m" in df.columns:
+        # After first contact the rollout has already failed and the camera
+        # may sit inside the other car: not a state a governor acts in.
+        keep = ~after_contact(df)
+        df, data = df.filter(pl.Series(keep)), {k: v[keep] for k, v in data.items()}
+    return df, data
+
+
+def after_contact(df: pl.DataFrame, contact_m: float = 0.3) -> np.ndarray:
+    """Rows at or after each rollout's first frame with a gap below ``contact_m``."""
+    flag = (
+        df.with_row_index("_row")
+        .sort("rollout_uuid", "time_us")
+        .with_columns((pl.col("lead_gap_m") < contact_m).cum_max().over("rollout_uuid").alias("_c"))
+        .sort("_row")["_c"]
+    )
+    return flag.to_numpy()
 
 
 def _splits(
@@ -116,6 +170,7 @@ def main() -> None:
     parser.add_argument(
         "--eval", type=Path, nargs="+", help="only score these heads on the validation frames"
     )
+    parser.add_argument("--conv", action="store_true", help="conv head over the patch grid")
     parser.add_argument("--train-sources", nargs="+", help="collections to train on")
     parser.add_argument("--val-sources", nargs="+", help="collections to validate on")
     parser.add_argument("--epochs", type=int, default=200)
@@ -150,7 +205,10 @@ def main() -> None:
         return
     if args.out is None:
         parser.error("--out is required for training")
-    head = GapHead(train["x"].shape[1]).to(device)
+    from metadrive_rl.perception import grid_hw
+
+    head = GapHead(train["x"].shape[1], grid_hw=grid_hw(args.encoder) if args.conv else None)
+    head = head.to(device)
     opt = torch.optim.AdamW(head.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     args.out.mkdir(parents=True, exist_ok=True)
     best = (float("inf"), None)
@@ -186,6 +244,7 @@ def main() -> None:
                 "best": best[1],
                 "seed": args.seed,
                 "quantile": args.quantile,
+                "conv": args.conv,
                 "train_sources": args.train_sources,
                 "val_sources": args.val_sources,
                 "data": str(args.data),

@@ -95,3 +95,29 @@ def test_path_gap_follows_the_driven_curve():
     half = {"car": 2.0, "parked": 2.0}
     assert abs(path_gap(path, [on_curve], half) - (30 * 0.6 - 2.6 - 2.0)) < 0.6
     assert path_gap(path, [straight_ahead], half) == NO_LEAD_M
+
+
+def test_after_contact_marks_rest_of_each_rollout():
+    import polars as pl
+
+    from metadrive_rl.perception.lead_gap import after_contact
+
+    df = pl.DataFrame(
+        {
+            "rollout_uuid": ["a", "a", "a", "b", "a", "b"],
+            "time_us": [0, 1, 2, 0, 3, 1],
+            "lead_gap_m": [9.0, 0.1, 5.0, 4.0, 60.0, 3.0],
+        }
+    )
+    assert after_contact(df).tolist() == [False, True, True, False, True, False]
+
+
+def test_conv_gap_head_reads_the_patch_grid():
+    import torch
+
+    from metadrive_rl.perception.lead_gap import GapHead
+
+    width, (h, w) = 8, (2, 3)
+    head = GapHead((2 + h * w) * width, grid_hw=(h, w), conv_channels=4)
+    out = head(torch.randn(5, (2 + h * w) * width), torch.full((5,), 8.0))
+    assert out.shape == (5,) and bool(((out >= 0) & (out <= 60)).all())
