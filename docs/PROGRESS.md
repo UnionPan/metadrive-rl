@@ -332,6 +332,14 @@ policies (SFT vs rule: paired SD 0.264) need ~27 scenes to resolve ±0.10 and
 The 16-scene val_cl/test_cl splits can only detect large effects; a final
 comparison needs ~100 held-out scenes with repeated rollouts.
 
+**Demo / noise illustration** (`demos/d5cc3763_rule_sft_grpo.mp4`, not in Git;
+`reports/demo_d5cc3763_frames.jpg`): the one val_cl scene where GRPO-it8 beat
+SFT (both GRPO rollouts passed, SFT 1 of 2, rule 0 of 2) was re-run with one
+rollout per policy for video: now rule passes and SFT and GRPO collide. Single
+rollouts under CATK's stochastic traffic flip outcomes; the video illustrates
+the system, not a ranking. Late frames degrade once the ego is 70–85 m from the
+logged position (renderer limit noted under M0).
+
 **Simulator-aborted rollouts are excluded, not scored 0.** When aggregation
 is allowed despite failures, CATK-aborted rollouts appear in
 results-summary.json with score 0 and an error instead of metrics. The first

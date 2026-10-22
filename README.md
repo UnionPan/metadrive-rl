@@ -34,13 +34,19 @@ gsplat NuRec renderer ──frames──▶ MetaDrive driver plugin
 
 | Milestone | Status |
 |---|---|
-| M0 feasibility | done: AlpaSim + Docker on Turing; own renderer (NRE unsupported) |
-| M1 mode-conditioned driver | done: fixed modes give distinct executed paths in closed loop |
-| M2 SFT | in progress: expert collection, labels, encoder, trainer built |
-| M3 DPO | trainer built (simulator-derived preferences) |
-| M4 GRPO / RLVR | batch builder, clipped update and loop built; not yet run |
-| M5 AIS | — |
-| M6 publication | — |
+| M0 feasibility | done: AlpaSim + Docker on Turing; own gsplat renderer (NRE unsupported), validated on 24 scenes |
+| M1 mode-conditioned driver | done: fixed modes give distinct executed paths in closed loop; CATK reactive traffic |
+| M2 SFT | exit gate met: beats the best constant action offline (0.680 vs 0.801 m regret); no measurable closed-loop gain |
+| M3 DPO | ADE-preference DPO: negative result; matched-state branch preferences built, not yet collected |
+| M4 GRPO / RLVR | loop runs end to end (8 iterations, 472 rollouts, 4 GPUs); no measurable closed-loop gain yet |
+| M5 AIS | offline matched-budget comparison: null result |
+| M6 publication | partial: reports, comparison videos |
+
+Closed-loop comparisons so far are underpowered: from paired per-scene differences, resolving ±0.05
+in score between behaviourally different policies needs ~100 held-out scenes. Details and all
+measurements: [docs/PROGRESS.md](docs/PROGRESS.md).
+
+![rule vs SFT vs GRPO on one scene](reports/demo_d5cc3763_frames.jpg)
 
 ## Repository layout
 
