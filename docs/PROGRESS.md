@@ -68,6 +68,26 @@ f-theta cameras. (6) Views far from the recorded path degrade (smears, floaters)
 — e.g. the rule policy 60–90 m off the logged position — so rendered
 observations are only trustworthy near the log.
 
+**Off-coverage degradation: cause and handling.** The reconstruction only
+covers what the recording drive saw. Along the CRUISE@10 rollout (human drove
+74 m, policy 163 m), static Gaussians in a 40 m view cone ahead drop from
+98,571 at the start to 45,958 at the end of the logged path, 5,611 at 120 m and
+593 at 150 m; the remaining large semi-transparent Gaussians smear. AlpaSim
+already stops scoring a rollout once the ego is ≥ 4 m from the logged
+trajectory (`max_dist_to_gt_trajectory`); GRPO batches now also drop decisions
+after that exit. Lane changes (3.5 m) stay inside; the binding limit is
+longitudinal: at 10 m/s the ego passes the end of this 74 m log at ~11 s, so
+faster-than-human policies are scored on that window only.
+
+Renderer-side pruning, validated on 24 scenes (full-frame PSNR vs. photos):
+dropping Gaussians larger than 5 or 10 m is worse in 12/24 scenes (up to −1 dB;
+many are real background) and its off-coverage effect cannot be measured, so it
+is not used. Dropping near-transparent Gaussians (opacity < 0.01) removes 41%
+of static Gaussians, renders 12% faster (40.0 → 35.2 ms at 512×320) with no PSNR
+change (worse in 0/24) and is the server default. Beyond the corridor only a
+generative model could fill in content (NVIDIA uses a diffusion "fixer"); that
+would be plausible, not recorded, imagery.
+
 **No-render mode.** Before the renderer existed, closed-loop runs used
 AlpaSim's renderer skip mode, patched to report locally defined cameras and
 return black frames (`metadrive_no_render`). Those runs have black camera

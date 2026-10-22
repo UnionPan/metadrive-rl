@@ -64,10 +64,12 @@ def main() -> None:
     parser.add_argument(
         "--out", type=Path, help="write a JSON summary and side-by-side images here"
     )
+    parser.add_argument("--max-scale-m", type=float, help="prune larger static Gaussians")
+    parser.add_argument("--min-opacity", type=float, default=0.0)
     args = parser.parse_args()
     results = []
     for path in args.usdz:
-        renderer = GsplatRenderer(NuRecScene(path), "cuda")
+        renderer = GsplatRenderer(NuRecScene(path), "cuda", args.max_scale_m, args.min_opacity)
         stats, pair = compare(renderer, args.camera)
         results.append(stats)
         print(json.dumps({k: round(v, 2) if isinstance(v, float) else v for k, v in stats.items()}))

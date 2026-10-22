@@ -62,7 +62,23 @@ def _ftheta(calib: CameraCalibration) -> FThetaCameraDistortionParameters:
 
 
 class GsplatRenderer:
-    def __init__(self, scene: NuRecScene, device: torch.device | str = "cuda"):
+    def __init__(
+        self,
+        scene: NuRecScene,
+        device: torch.device | str = "cuda",
+        max_scale_m: float | None = None,
+        min_opacity: float = 0.0,
+    ):
+        """``max_scale_m`` / ``min_opacity`` optionally prune static Gaussians
+        (oversized or near-transparent "floaters")."""
+        if max_scale_m is not None or min_opacity > 0.0:
+            g = scene.static
+            keep = g.opacities >= min_opacity
+            if max_scale_m is not None:
+                keep &= g.scales.max(-1).values <= max_scale_m
+            scene.static = GaussianSet(
+                *(getattr(g, f)[keep] for f in GaussianSet.__dataclass_fields__)
+            )
         self.scene = scene.to(device)
         self.device = torch.device(device)
 
