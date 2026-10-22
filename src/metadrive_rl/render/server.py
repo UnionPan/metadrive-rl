@@ -98,8 +98,23 @@ def camera_spec(calib: CameraCalibration) -> sensorsim_pb2.CameraSpec:
 def calibration_from_spec(
     spec: sensorsim_pb2.CameraSpec, T_sensor_rig: np.ndarray
 ) -> CameraCalibration:
-    if spec.WhichOneof("camera_param") != "ftheta_param":
-        raise ValueError(f"camera {spec.logical_id}: only f-theta cameras are supported")
+    kind = spec.WhichOneof("camera_param")
+    if kind == "opencv_pinhole_param":
+        p = spec.opencv_pinhole_param
+        return CameraCalibration(
+            logical_id=spec.logical_id,
+            T_sensor_rig=T_sensor_rig,
+            resolution_wh=(spec.resolution_w, spec.resolution_h),
+            principal_point=(p.principal_point_x, p.principal_point_y),
+            shutter_type=sensorsim_pb2.ShutterType.Name(spec.shutter_type),
+            camera_model="pinhole",
+            focal_length=(p.focal_length_x, p.focal_length_y),
+            radial_coeffs=tuple(p.radial_coeffs),
+            tangential_coeffs=tuple(p.tangential_coeffs),
+            thin_prism_coeffs=tuple(p.thin_prism_coeffs),
+        )
+    if kind != "ftheta_param":
+        raise ValueError(f"camera {spec.logical_id}: unsupported camera model {kind}")
     p = spec.ftheta_param
     if p.reference_poly != sensorsim_pb2.FthetaCameraParam.PolynomialType.Value(
         "PIXELDIST_TO_ANGLE"

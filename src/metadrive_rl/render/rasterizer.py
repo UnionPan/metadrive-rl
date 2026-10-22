@@ -51,6 +51,24 @@ def _pixel_scale(calib: CameraCalibration, width: int, height: int) -> tuple[flo
     return width / native_w, height / native_h
 
 
+def _padded(coeffs: tuple[float, ...], n: int, device) -> torch.Tensor:
+    values = list(coeffs[:n]) + [0.0] * (n - min(len(coeffs), n))
+    return torch.tensor([values], dtype=torch.float32, device=device)
+
+
+def _camera_model_kwargs(calib: CameraCalibration, device) -> dict:
+    if calib.camera_model == "pinhole":
+        return {
+            "camera_model": "pinhole",
+            "radial_coeffs": _padded(calib.radial_coeffs, 6, device),
+            "tangential_coeffs": _padded(calib.tangential_coeffs, 2, device),
+            "thin_prism_coeffs": _padded(calib.thin_prism_coeffs, 4, device),
+        }
+    if calib.camera_model == "ftheta":
+        return {"camera_model": "ftheta", "ftheta_coeffs": _ftheta(calib)}
+    raise ValueError(f"unsupported camera model {calib.camera_model!r}")
+
+
 def _ftheta(calib: CameraCalibration) -> FThetaCameraDistortionParameters:
     return FThetaCameraDistortionParameters(
         reference_poly=FThetaPolynomialType.PIXELDIST_TO_ANGLE,
@@ -130,8 +148,11 @@ class GsplatRenderer:
         g = GaussianSet.concat([self.scene.static, *self._placed_objects(objects)])
         sx, sy = _pixel_scale(calib, width, height)
         cx, cy = calib.principal_point
+        # f-theta maps angles to pixels itself; K only carries the pixel scale.
+        fx, fy = calib.focal_length if calib.camera_model == "pinhole" else (1.0, 1.0)
         K = torch.tensor(
-            [[[sx, 0.0, cx * sx], [0.0, sy, cy * sy], [0.0, 0.0, 1.0]]], device=self.device
+            [[[fx * sx, 0.0, cx * sx], [0.0, fy * sy, cy * sy], [0.0, 0.0, 1.0]]],
+            device=self.device,
         )
         colors, alpha, _ = gsplat.rasterization(
             g.means,
@@ -144,8 +165,7 @@ class GsplatRenderer:
             width,
             height,
             sh_degree=3,
-            camera_model="ftheta",
-            ftheta_coeffs=_ftheta(calib),
+            **_camera_model_kwargs(calib, self.device),
             with_ut=True,
             with_eval3d=True,
             packed=False,

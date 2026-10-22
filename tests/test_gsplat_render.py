@@ -51,3 +51,18 @@ def test_reduced_resolution_matches_downsampled(renderer):
     full = Image.fromarray(renderer.render(calib, w, h, *args)).resize((512, 320), Image.BILINEAR)
     assert small.shape == (320, 512, 3)
     assert psnr(small, np.asarray(full)) > 24.0
+
+
+def test_pinhole_matches_opencv_and_ftheta(renderer):
+    """VaVAM's distorted OpenCV-pinhole camera, checked against NumPy projections.
+
+    Measured on two val scenes: distortion 43-49 dB (control 20-30 dB),
+    pinhole vs f-theta 30-39 dB.
+    """
+    from metadrive_rl.render.validate import pinhole_consistency
+
+    stats = pinhole_consistency(renderer)
+    print(stats)
+    assert stats["distortion_vs_opencv_db"] > 40.0
+    assert stats["distortion_vs_opencv_db"] > stats["distortion_ignored_db (control)"] + 10.0
+    assert stats["pinhole_vs_ftheta_db"] > 28.0

@@ -62,11 +62,19 @@ class CameraCalibration:
     T_sensor_rig: np.ndarray  # (4, 4) camera pose in the rig frame (OpenCV axes)
     resolution_wh: tuple[int, int]
     principal_point: tuple[float, float]
-    pixeldist_to_angle_poly: tuple[float, ...]
-    angle_to_pixeldist_poly: tuple[float, ...]
-    max_angle: float
-    linear_cde: tuple[float, float, float]
     shutter_type: str
+    camera_model: str = "ftheta"  # "ftheta" (NuRec rig cameras) or "pinhole" (OpenCV)
+    # f-theta
+    pixeldist_to_angle_poly: tuple[float, ...] = ()
+    angle_to_pixeldist_poly: tuple[float, ...] = ()
+    max_angle: float = 0.0
+    linear_cde: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    # OpenCV pinhole: focal lengths in pixels and distortion in normalised
+    # image coordinates (k1..k6, p1 p2, s1..s4), as in cv2.projectPoints.
+    focal_length: tuple[float, float] = (0.0, 0.0)
+    radial_coeffs: tuple[float, ...] = ()
+    tangential_coeffs: tuple[float, ...] = ()
+    thin_prism_coeffs: tuple[float, ...] = ()
 
 
 def _gaussians(sd: dict, layer: str, dc: torch.Tensor) -> GaussianSet:
