@@ -120,11 +120,22 @@ any deviation from the human log causes contact.
 **Reactive traffic (CATK).** `trafficsim=catk` (weights via Git LFS) runs on
 GPU 0 with physics. With CATK all 62 compared actors move differently from log
 replay and the rule policy is no longer rear-ended (`collision_rear` 0); its
-at-fault front collision with the truck it drives into remains. Evaluation
-therefore uses CATK and AlpaSim's aggregated scoring: a rollout fails on an
-at-fault collision or offroad, otherwise scores its clipped relative progress
-(`python -m metadrive_rl.evaluation.summarize`). Open issue: one actor's pose
-differs by 343 m between replay and CATK runs; not yet explained.
+at-fault front collision with the truck it drives into remains. Direct test of the
+replay failure (same scene, gsplat cameras):
+
+| Probe | Log replay | CATK |
+|---|---|---|
+| BRAKE (stops after 4.9 m) | front + rear collision | no collision; score 0.083 (progress 0.066) |
+| YIELD (23 m) | front + rear collision | no collision; score 0.394 (progress 0.315) |
+| rule ≈ CRUISE@10 (drives into the truck) | collisions | at-fault collision, score 0 |
+
+Evaluation therefore uses CATK and AlpaSim's aggregated scoring: a rollout
+fails on an at-fault collision or offroad, otherwise scores its clipped
+relative progress, so stopping is safe but scores low
+(`python -m metadrive_rl.evaluation.summarize`). Remaining limits: CATK only
+takes over agents within 100 m at handover (1.7 s); the rest are held static.
+The 343 m pose difference seen between replay and CATK runs is such frozen
+agents on the opposite carriageway.
 
 ## M2 — SFT (in progress)
 
@@ -143,8 +154,26 @@ differs by 343 m between replay and CATK runs; not yet explained.
   labels FOLLOW / CRUISE@5 for this slow-traffic drive. Data re-collected.
 - Encoder: DINOv2-small FP16, CLS + mean patch tokens (768-d), 88 ms per batch
   of 32 frames on one RTX 8000.
-- Head: MLP on [image features, state features]; soft targets softmax(−ADE/τ);
-  checkpoint selection by validation regret (ADE of chosen − best).
+- Head: MLP on [image features, state features]; checkpoint selection by
+  validation regret (ADE of the chosen action − best ADE).
+
+**SFT round 1 — negative result (16 train scenes, 512 / 128 decisions, 3 seeds):**
+
+| Model | Val regret (m) | Val top-1 |
+|---|---|---|
+| always FOLLOW (best constant) | 0.801 | 0.328 |
+| soft-label CE, image + state | 1.580 ± 0.053 | 0.159 |
+| soft-label CE, state only | 1.546 ± 0.046 | 0.182 |
+| ADE regression, image + state | 0.801 ± 0.000 | 0.328 |
+| ADE regression, state only | 0.801 ± 0.000 | 0.328 |
+
+Cross-entropy heads overfit (train regret 0.16 m) and pick expensive actions on
+validation scenes (whose speeds are also lower: mean 3.8 vs 8.1 m/s). ADE
+regression, which targets the selection metric, never does worse than the
+constant baseline, but its best checkpoint *is* the constant baseline: 16
+scenes contain no generalisable signal, visual or not. Response: training split
+extended to 64 scenes (val/test unchanged, verified) and ADE regression made
+the default objective.
 
 ## Tests
 
@@ -155,7 +184,9 @@ differs by 343 m between replay and CATK runs; not yet explained.
 
 ## Next actions
 
-1. Finish re-collection (train + val), build datasets, extract features.
-2. Train SFT (image+state vs. state-only ablation); compare val regret.
+1. Collect expert data on the 48 added training scenes; retrain SFT and
+   re-check against always-FOLLOW and the state-only ablation.
+2. If images still add nothing, try a larger encoder (DINOv2-base) and denser
+   decisions before blaming the representation.
 3. Closed-loop val evaluation with CATK: rule vs. SFT (`scripts/evaluate.sh`).
 4. M3: preference pairs from per-candidate ADE and closed-loop outcomes; DPO.
