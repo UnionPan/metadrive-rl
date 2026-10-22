@@ -6,6 +6,9 @@
 # logs its 12 candidate plans per decision, and saves the decision images.
 # Labels are computed offline from the executed (= logged) ego future.
 #
+# All scenes without a rollout under <out-dir> run in one AlpaSim invocation
+# (shared startup, concurrent rollouts); evaluation videos are skipped.
+#
 # Usage: scripts/collect_expert.sh <splits.yaml> <split> <out-dir>
 # Needs: scripts/serve_gsplat_renderer.sh running (METADRIVE_RENDERER_ADDR).
 set -uo pipefail
@@ -24,20 +27,20 @@ decision_period_s: 0.5
 image_dir: $OUT/images
 YAML
 
-mapfile -t SCENES < <("$PY" -c "
+PENDING=$("$PY" - "$SPLITS" "$SPLIT" "$OUT" <<'EOF'
 import sys, yaml
-for s in yaml.safe_load(open(sys.argv[1]))[sys.argv[2]]: print(s['scene_id'])
-" "$SPLITS" "$SPLIT")
-
-for scene in "${SCENES[@]}"; do
-  if compgen -G "$OUT/$scene/sim/rollouts/*/*/rollout.asl" > /dev/null; then
-    echo "=== $scene: done"; continue
-  fi
-  echo "=== $scene"
-  rm -rf "${OUT:?}/$scene"
-  "$HERE/run_episode.sh" "$OUT/$scene" "$OUT/policy.yaml" \
-    "scenes.scene_ids=[$scene]" \
-    runtime.simulation_config.force_gt_duration_us=1000000000 \
-    > "$OUT/$scene.log" 2>&1
-  echo "exit=$?"
-done
+from pathlib import Path
+splits, split, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
+done = {p.parent.parent.name for p in out.glob("**/rollouts/*/*/rollout.asl")}
+print(",".join(s["scene_id"] for s in yaml.safe_load(open(splits))[split]
+               if s["scene_id"] not in done))
+EOF
+)
+if [[ -z "$PENDING" ]]; then
+  echo "all $SPLIT scenes collected"; exit 0
+fi
+echo "collecting $(tr ',' '\n' <<< "$PENDING" | wc -l) scenes"
+"$HERE/run_episode.sh" "$OUT/batch_$(date +%Y%m%d_%H%M%S)" "$OUT/policy.yaml" \
+  "scenes.scene_ids=[$PENDING]" \
+  runtime.simulation_config.force_gt_duration_us=1000000000 \
+  eval.video.render_video=False
