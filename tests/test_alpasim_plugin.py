@@ -109,3 +109,12 @@ def test_committed_lane_survives_route_reanchoring():
     # Route re-anchors onto the ego's lane.
     rec = _record(model.predict(_shifted_route_inputs(poses, 13, 300_000, 0.0)))
     assert rec["lane_offset_m"] == pytest.approx(0.0, abs=0.05)
+
+
+def test_decision_images_are_saved(tmp_path):
+    model = _model("rule", image_dir=str(tmp_path), decision_period_s=0.5)
+    poses = [(0, object())]
+    recs = [_record(model.predict(_inputs(poses, 10 + k, k * 100_000))) for k in range(6)]
+    saved = sorted(p.stem for p in tmp_path.glob("*.jpg"))
+    assert saved == sorted({r["decision_id"] for r in recs})
+    assert len(saved) == 2

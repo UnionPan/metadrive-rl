@@ -25,9 +25,21 @@ class RolloutLog:
     scene_id: str
     rollout_uuid: str
     ego_t_us: np.ndarray  # (N,)
-    ego_xy: np.ndarray  # (N, 2) local (scene) frame
+    ego_xy: np.ndarray  # (N, 2) ego bounding-box centre, scene frame
     ego_yaw: np.ndarray  # (N,)
-    decisions: list[dict]  # one MetaDrive record per drive response, in order
+    # Ego rig poses (the frame planner trajectories are expressed in), from the
+    # egomotion the runtime sends the driver.
+    rig_t_us: np.ndarray  # (M,)
+    rig_xy: np.ndarray  # (M, 2) scene frame
+    # One MetaDrive record per drive response, in order, plus ``time_us`` (the
+    # drive request time). Decision records also carry the planner candidates
+    # as returned to the runtime: ``candidates_xy`` (K, T, 2) in the scene frame
+    # and ``candidates_t_us`` (T,).
+    decisions: list[dict]
+
+    def rig_xy_at(self, t_us: np.ndarray) -> np.ndarray:
+        """Executed rig position at ``t_us`` (linear interpolation), (N, 2)."""
+        return np.stack([np.interp(t_us, self.rig_t_us, self.rig_xy[:, i]) for i in range(2)], -1)
 
     @property
     def duration_s(self) -> float:
@@ -59,8 +71,15 @@ def _yaw(q) -> float:
 def read_rollout(path: str | Path) -> RolloutLog:
     scene_id = rollout_uuid = ""
     t, xy, yaw, decisions = [], [], [], []
+    request_time_us = None
+    rig: dict[int, tuple[float, float]] = {}
     for entry in iter_entries(path):
         kind = entry.WhichOneof("log_entry")
+        if kind == "driver_request":
+            request_time_us = entry.driver_request.time_now_us
+        elif kind == "driver_ego_trajectory":
+            for p in entry.driver_ego_trajectory.trajectory.poses:
+                rig[p.timestamp_us] = (p.pose.vec.x, p.pose.vec.y)
         if kind == "rollout_metadata":
             meta = entry.rollout_metadata.session_metadata
             scene_id, rollout_uuid = meta.scene_id, meta.session_uuid
@@ -83,6 +102,15 @@ def read_rollout(path: str | Path) -> RolloutLog:
             if text:
                 record = json.loads(text).get(RECORD_KEY)
                 if record is not None:
+                    record["time_us"] = request_time_us
+                    if record["is_decision"]:
+                        cands = entry.driver_return.debug_info.sampled_trajectories
+                        record["candidates_xy"] = np.array(
+                            [[(p.pose.vec.x, p.pose.vec.y) for p in c.poses] for c in cands]
+                        )
+                        record["candidates_t_us"] = np.array(
+                            [p.timestamp_us for p in cands[0].poses], dtype=np.int64
+                        )
                     decisions.append(record)
     return RolloutLog(
         path=Path(path),
@@ -91,6 +119,8 @@ def read_rollout(path: str | Path) -> RolloutLog:
         ego_t_us=np.asarray(t, dtype=np.int64),
         ego_xy=np.asarray(xy, dtype=float).reshape(-1, 2),
         ego_yaw=np.asarray(yaw, dtype=float),
+        rig_t_us=np.array(sorted(rig), dtype=np.int64),
+        rig_xy=np.array([rig[k] for k in sorted(rig)], dtype=float).reshape(-1, 2),
         decisions=decisions,
     )
 

@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from PIL import Image
 from alpasim_driver.models.base import (
     BaseTrajectoryModel,
     DriveCommand,
@@ -116,8 +117,10 @@ class MetaDriveModel(BaseTrajectoryModel):
 
             self.encoder = build_encoder(spec.encoder, device)
         self.feature_dir = Path(spec.feature_dir) if spec.feature_dir else None
-        if self.feature_dir is not None:
-            self.feature_dir.mkdir(parents=True, exist_ok=True)
+        self.image_dir = Path(spec.image_dir) if spec.image_dir else None
+        for d in (self.feature_dir, self.image_dir):
+            if d is not None:
+                d.mkdir(parents=True, exist_ok=True)
         self.sessions = _SessionTable()
         logger.info("MetaDrive policy %s, encoder %s", self.policy.version, spec.encoder)
 
@@ -219,6 +222,9 @@ class MetaDriveModel(BaseTrajectoryModel):
             state.base_offset_m, state.lane_offset_m = state.lane_offset_m, target
             if self.feature_dir is not None and obs.features is not None:
                 np.save(self.feature_dir / f"{state.decision_id}.npy", obs.features)
+            if self.image_dir is not None and obs.image is not None:
+                Image.fromarray(obs.image).save(self.image_dir / f"{state.decision_id}.jpg",
+                                                quality=95)
         decision = state.decision
         assert decision is not None
 

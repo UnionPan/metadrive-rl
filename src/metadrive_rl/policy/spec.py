@@ -24,6 +24,9 @@ class PolicySpec:
     greedy: bool = True
     # When set, per-decision encoder features are written here for training.
     feature_dir: str | None = None
+    # When set, the camera image seen at each decision is saved here as
+    # <decision_id>.jpg, so datasets can be re-encoded with other backbones.
+    image_dir: str | None = None
     planner: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
