@@ -15,3 +15,11 @@ runtime:
   endpoints:
     driver:
       skip: false
+  # Render only the camera the MetaDrive driver consumes.
+  simulation_config:
+    cameras:
+      - height: 320
+        width: 512
+        logical_id: camera_front_wide_120fov
+        frame_interval_us: 100_000
+        shutter_duration_us: 30_000
