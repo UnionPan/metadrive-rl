@@ -663,6 +663,25 @@ to the other processes. Fixes: the renderer now calls `torch.cuda.empty_cache()`
 after evicting, the idle renderer was stopped, and the run was set aside
 (`valcl_sft_gov2_oom_invalid`) and repeated on the GPU 2 stack.
 
+SFT + v2, repeated (4 simulator aborts, the usual): score +0.042 [−0.083,
++0.167], at-fault collision −0.042 over 12 scenes. Three rear-end scenes
+change: two improve, one gets worse.
+
+Governor v2 on val_cl, 11 scenes matched across all six runs
+(`reports/governor_v2_valcl.md`):
+
+| policy | without governor | with governor v2 |
+|---|---|---|
+| always-FOLLOW | 0.490 (collision 0.318) | 0.627 (0.182) |
+| SFT | 0.504 (0.409) | 0.595 (0.318) |
+| GRPO-it8 | 0.549 (0.364) | 0.549 (0.364) |
+
+Pooled over the three policies (bootstrap over scenes): score **+0.076
+[0.000, +0.197]**, at-fault collision −0.076 [−0.197, 0.000], progress
+−0.001. The governor costs no progress and moves only rear-end scenes. Those
+are the scenes where CATK's stochastic traffic flips outcomes most, so on
+11 scenes the CI still touches zero.
+
 **Confirmatory evaluation on eval_big (96 held-out scenes), running.**
 always-FOLLOW, always-FOLLOW + v2 and SFT + v2, paired with the SFT and
 GRPO-it8 runs on identical scenes. Two `eval_powered.sh` instances share the
