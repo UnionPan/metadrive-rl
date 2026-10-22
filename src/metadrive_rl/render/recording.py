@@ -21,7 +21,9 @@ from .scene import NuRecScene
 
 def cameras_with_photos(scene: NuRecScene) -> list[str]:
     with zipfile.ZipFile(scene.usdz_path) as z:
-        names = {n.split("/")[1] for n in z.namelist() if n.startswith("frames/") and n.count("/") == 2}
+        names = {
+            n.split("/")[1] for n in z.namelist() if n.startswith("frames/") and n.count("/") == 2
+        }
     return sorted(c for c in names if c in scene.cameras)
 
 

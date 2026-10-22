@@ -3,7 +3,7 @@
 Each scene ships one recorded photo per camera with its rig poses, which gives
 a ground-truth check of geometry, camera model and actor placement.
 
-Usage: python -m metadrive_rl.render.validate <usdz>... [--cache-dir DIR] [--out DIR]
+Usage: python -m metadrive_rl.render.validate <usdz>... [--out DIR]
 """
 
 from __future__ import annotations
@@ -32,7 +32,10 @@ def compare(renderer: GsplatRenderer, camera: str) -> tuple[dict, np.ndarray]:
     calib = scene.cameras[camera]
     frame = recorded_frame(scene, camera)
     w, h = calib.resolution_wh
-    poses = (frame.T_world_rig_start @ calib.T_sensor_rig, frame.T_world_rig_end @ calib.T_sensor_rig)
+    poses = (
+        frame.T_world_rig_start @ calib.T_sensor_rig,
+        frame.T_world_rig_end @ calib.T_sensor_rig,
+    )
     static = renderer.render(calib, w, h, *poses, [])
     full = renderer.render(calib, w, h, *poses, recorded_objects(scene, frame.mid_time_us))
     rows = slice(0, int(h * (1 - HOOD_FRACTION)))
@@ -42,30 +45,37 @@ def compare(renderer: GsplatRenderer, camera: str) -> tuple[dict, np.ndarray]:
         "scene_id": scene.scene_id,
         "psnr_full_db": psnr(full, photo),
         "vehicle_px_fraction": float(vehicle_px.mean()),
-        "psnr_vehicle_px_without_db": psnr(static[vehicle_px], photo[vehicle_px]) if vehicle_px.any() else None,
-        "psnr_vehicle_px_with_db": psnr(full[vehicle_px], photo[vehicle_px]) if vehicle_px.any() else None,
+        "psnr_vehicle_px_without_db": psnr(static[vehicle_px], photo[vehicle_px])
+        if vehicle_px.any()
+        else None,
+        "psnr_vehicle_px_with_db": psnr(full[vehicle_px], photo[vehicle_px])
+        if vehicle_px.any()
+        else None,
     }
     return stats, np.concatenate([photo, full], 0)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("usdz", nargs="+", type=Path)
     parser.add_argument("--camera", default="camera_front_wide_120fov")
-    parser.add_argument("--cache-dir", type=Path, default=Path.home() / ".cache/metadrive_rl/nurec")
-    parser.add_argument("--out", type=Path, help="write a JSON summary and side-by-side images here")
+    parser.add_argument(
+        "--out", type=Path, help="write a JSON summary and side-by-side images here"
+    )
     args = parser.parse_args()
     results = []
     for path in args.usdz:
-        renderer = GsplatRenderer(NuRecScene(path, args.cache_dir), "cuda")
+        renderer = GsplatRenderer(NuRecScene(path), "cuda")
         stats, pair = compare(renderer, args.camera)
         results.append(stats)
         print(json.dumps({k: round(v, 2) if isinstance(v, float) else v for k, v in stats.items()}))
         if args.out:
             args.out.mkdir(parents=True, exist_ok=True)
             Image.fromarray(pair).resize((pair.shape[1] // 4, pair.shape[0] // 4)).save(
-                args.out / f"{stats['scene_id']}.jpg", quality=85)
+                args.out / f"{stats['scene_id']}.jpg", quality=85
+            )
         del renderer
     if args.out:
         (args.out / "summary.json").write_text(json.dumps(results, indent=1))

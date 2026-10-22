@@ -10,7 +10,7 @@
 # (shared startup, concurrent rollouts); evaluation videos are skipped.
 #
 # Usage: scripts/collect_expert.sh <splits.yaml> <split> <out-dir>
-# Needs: scripts/serve_gsplat_renderer.sh running (METADRIVE_RENDERER_ADDR).
+# Needs: scripts/serve_gsplat_renderer.sh running (METADRIVE_RENDERER_ADDRS).
 set -uo pipefail
 
 SPLITS=${1:?usage: collect_expert.sh <splits.yaml> <split> <out-dir>}

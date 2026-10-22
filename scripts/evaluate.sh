@@ -3,7 +3,7 @@
 # with gsplat-rendered cameras and CATK reactive traffic.
 #
 # Usage: scripts/evaluate.sh <policy-spec> <split> <out-dir> [rollouts-per-scene]
-# Needs: scripts/serve_gsplat_renderer.sh running (METADRIVE_RENDERER_ADDR).
+# Needs: scripts/serve_gsplat_renderer.sh running (METADRIVE_RENDERER_ADDRS).
 # Then:  python -m metadrive_rl.evaluation.summarize <out-dir>
 set -uo pipefail
 

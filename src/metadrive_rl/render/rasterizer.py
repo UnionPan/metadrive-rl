@@ -85,8 +85,15 @@ class GsplatRenderer:
         owner = torch.repeat_interleave(torch.arange(len(known), device=dev), counts)
         d = self.scene.dynamic
         means = torch.einsum("nij,nj->ni", R[owner], d.means[index]) + t[owner]
-        return [GaussianSet(means, _quat_mul(q[owner], d.quats[index]), d.scales[index],
-                            d.opacities[index], d.sh[index])]
+        return [
+            GaussianSet(
+                means,
+                _quat_mul(q[owner], d.quats[index]),
+                d.scales[index],
+                d.opacities[index],
+                d.sh[index],
+            )
+        ]
 
     def _viewmat(self, T_world_camera: np.ndarray) -> torch.Tensor:
         T = self.scene.world_to_nre @ T_world_camera
@@ -107,16 +114,29 @@ class GsplatRenderer:
         g = GaussianSet.concat([self.scene.static, *self._placed_objects(objects)])
         sx, sy = _pixel_scale(calib, width, height)
         cx, cy = calib.principal_point
-        K = torch.tensor([[[sx, 0.0, cx * sx], [0.0, sy, cy * sy], [0.0, 0.0, 1.0]]],
-                         device=self.device)
+        K = torch.tensor(
+            [[[sx, 0.0, cx * sx], [0.0, sy, cy * sy], [0.0, 0.0, 1.0]]], device=self.device
+        )
         colors, alpha, _ = gsplat.rasterization(
-            g.means, g.quats, g.scales, g.opacities, g.sh,
-            self._viewmat(T_world_camera_start), K, width, height,
-            sh_degree=3, camera_model="ftheta", ftheta_coeffs=_ftheta(calib),
-            with_ut=True, with_eval3d=True, packed=False,
+            g.means,
+            g.quats,
+            g.scales,
+            g.opacities,
+            g.sh,
+            self._viewmat(T_world_camera_start),
+            K,
+            width,
+            height,
+            sh_degree=3,
+            camera_model="ftheta",
+            ftheta_coeffs=_ftheta(calib),
+            with_ut=True,
+            with_eval3d=True,
+            packed=False,
             rolling_shutter=_SHUTTERS[shutter_type or calib.shutter_type],
             viewmats_rs=self._viewmat(T_world_camera_end),
-            near_plane=0.1, far_plane=1e4,
+            near_plane=0.1,
+            far_plane=1e4,
         )
         image = colors[0] + (1.0 - alpha[0]) * self.scene.sky_color
         return (image.clamp(0, 1) * 255).round().byte().cpu().numpy()

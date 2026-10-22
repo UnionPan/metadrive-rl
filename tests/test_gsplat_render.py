@@ -23,9 +23,8 @@ CAMERA = "camera_front_wide_120fov"
 
 
 @pytest.fixture(scope="module")
-def renderer(tmp_path_factory):
-    cache = os.environ.get("METADRIVE_RENDER_CACHE") or tmp_path_factory.mktemp("cache")
-    return GsplatRenderer(NuRecScene(USDZ, cache), "cuda")
+def renderer():
+    return GsplatRenderer(NuRecScene(USDZ), "cuda")
 
 
 def test_recorded_frame_matches_photo(renderer):
@@ -43,8 +42,11 @@ def test_reduced_resolution_matches_downsampled(renderer):
     calib = renderer.scene.cameras[CAMERA]
     frame = recorded_frame(renderer.scene, CAMERA)
     w, h = calib.resolution_wh
-    args = (frame.T_world_rig_start @ calib.T_sensor_rig,
-            frame.T_world_rig_end @ calib.T_sensor_rig, [])
+    args = (
+        frame.T_world_rig_start @ calib.T_sensor_rig,
+        frame.T_world_rig_end @ calib.T_sensor_rig,
+        [],
+    )
     small = renderer.render(calib, 512, 320, *args)
     full = Image.fromarray(renderer.render(calib, w, h, *args)).resize((512, 320), Image.BILINEAR)
     assert small.shape == (320, 512, 3)

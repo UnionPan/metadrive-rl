@@ -18,6 +18,7 @@ them into the frame of the Gaussians.
 
 from __future__ import annotations
 
+import io
 import json
 import zipfile
 from dataclasses import dataclass
@@ -88,20 +89,14 @@ def _dc(sd: dict, layer: str) -> torch.Tensor:
 
 
 class NuRecScene:
-    def __init__(self, usdz_path: str | Path, cache_dir: str | Path):
+    def __init__(self, usdz_path: str | Path):
         self.usdz_path = Path(usdz_path)
         with zipfile.ZipFile(self.usdz_path) as z:
             rig = json.loads(z.read("rig_trajectories.json"))
             tracks_json = json.loads(z.read("sequence_tracks.json"))
-            ckpt_path = Path(cache_dir) / self.usdz_path.stem / "checkpoint.ckpt"
-            if not ckpt_path.exists():
-                ckpt_path.parent.mkdir(parents=True, exist_ok=True)
-                tmp = ckpt_path.with_suffix(".tmp")
-                with z.open("checkpoint.ckpt") as src, open(tmp, "wb") as dst:
-                    while chunk := src.read(64 << 20):
-                        dst.write(chunk)
-                tmp.rename(ckpt_path)
-        sd = load_state_dict(str(ckpt_path))
+            # The checkpoint is stored uncompressed; reading it into memory in
+            # one pass (~3 s) avoids an extracted copy on disk.
+            sd = load_state_dict(io.BytesIO(z.read("checkpoint.ckpt")))
 
         trajectory = rig["rig_trajectories"][0]
         self.scene_id: str = trajectory["sequence_id"]
@@ -145,7 +140,9 @@ class NuRecScene:
         tracks = next(iter(tracks_json.values()))["tracks_data"]
         span_to_track = {
             (ts[0], ts[-1]): track_id
-            for track_id, ts in zip(tracks["tracks_id"], tracks["tracks_timestamps_us"])
+            for track_id, ts in zip(
+                tracks["tracks_id"], tracks["tracks_timestamps_us"], strict=True
+            )
         }
         ranges = sd[p + "time_embed.timestamps_us_ranges"].tolist()
         cuboid_track_ids = [span_to_track[(int(a), int(b))] for a, b in ranges]
@@ -153,7 +150,9 @@ class NuRecScene:
         dynamic = _gaussians(sd, layer, _dc(sd, layer))
         cuboid = sd[p + "gaussian_cuboid_ids"].long()
         order = torch.argsort(cuboid, stable=True)
-        dynamic = GaussianSet(*(getattr(dynamic, f)[order] for f in GaussianSet.__dataclass_fields__))
+        dynamic = GaussianSet(
+            *(getattr(dynamic, f)[order] for f in GaussianSet.__dataclass_fields__)
+        )
         counts = torch.bincount(cuboid, minlength=len(cuboid_track_ids)).tolist()
         bounds = np.concatenate([[0], np.cumsum(counts)]).astype(int)
         self.dynamic = dynamic
@@ -166,7 +165,10 @@ class NuRecScene:
         self.track_trajectories = {
             track_id: (np.array(ts, dtype=np.int64), np.array(poses, dtype=np.float64))
             for track_id, ts, poses in zip(
-                tracks["tracks_id"], tracks["tracks_timestamps_us"], tracks["tracks_poses"]
+                tracks["tracks_id"],
+                tracks["tracks_timestamps_us"],
+                tracks["tracks_poses"],
+                strict=True,
             )
         }
 

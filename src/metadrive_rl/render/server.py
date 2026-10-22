@@ -7,7 +7,7 @@ or batched RGB rendering. Lidar and aggregated rendering are not implemented.
 
 Usage:
     python -m metadrive_rl.render.server --port 46100 \\
-        --artifact-glob '/data/nre-artifacts/all-usdzs/*.usdz' --cache-dir ~/ext/render-cache
+        --artifact-glob '/data/nre-artifacts/all-usdzs/*.usdz'
 """
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ import threading
 import zipfile
 from collections import OrderedDict
 from concurrent import futures
-from pathlib import Path
 
 import grpc
 import numpy as np
@@ -56,6 +55,7 @@ def matrix_to_pose(T: np.ndarray) -> common_pb2.Pose:
 
 def midpoints(pairs) -> np.ndarray:
     """Pose halfway (slerp) between each pair's start and end, (K, 4, 4)."""
+
     def stack(poses):
         q = np.array([[p.quat.x, p.quat.y, p.quat.z, p.quat.w] for p in poses])
         v = np.array([[p.vec.x, p.vec.y, p.vec.z] for p in poses])
@@ -94,7 +94,9 @@ def camera_spec(calib: CameraCalibration) -> sensorsim_pb2.CameraSpec:
     )
 
 
-def calibration_from_spec(spec: sensorsim_pb2.CameraSpec, T_sensor_rig: np.ndarray) -> CameraCalibration:
+def calibration_from_spec(
+    spec: sensorsim_pb2.CameraSpec, T_sensor_rig: np.ndarray
+) -> CameraCalibration:
     if spec.WhichOneof("camera_param") != "ftheta_param":
         raise ValueError(f"camera {spec.logical_id}: only f-theta cameras are supported")
     p = spec.ftheta_param
@@ -132,11 +134,11 @@ def scene_id_of(usdz: str) -> str:
 
 
 class GsplatSensorsim(sensorsim_pb2_grpc.SensorsimServiceServicer):
-    def __init__(self, artifact_glob: str, cache_dir: str, device: str, cache_size: int):
+    def __init__(self, artifact_glob: str, device: str, cache_size: int):
         self.paths = {scene_id_of(p): p for p in sorted(glob.glob(artifact_glob, recursive=True))}
         if not self.paths:
             raise FileNotFoundError(f"no scenes match {artifact_glob}")
-        self.cache_dir, self.device, self.cache_size = cache_dir, device, cache_size
+        self.device, self.cache_size = device, cache_size
         self._renderers: OrderedDict[str, GsplatRenderer] = OrderedDict()
         self._lock = threading.Lock()  # one GPU, one render at a time
         logger.info("Scenes available: %s", sorted(self.paths))
@@ -150,7 +152,7 @@ class GsplatSensorsim(sensorsim_pb2_grpc.SensorsimServiceServicer):
         while len(self._renderers) >= self.cache_size:
             self._renderers.popitem(last=False)
         logger.info("Loading scene %s", scene_id)
-        renderer = GsplatRenderer(NuRecScene(self.paths[scene_id], self.cache_dir), self.device)
+        renderer = GsplatRenderer(NuRecScene(self.paths[scene_id]), self.device)
         self._renderers[scene_id] = renderer
         return renderer
 
@@ -160,8 +162,12 @@ class GsplatSensorsim(sensorsim_pb2_grpc.SensorsimServiceServicer):
             calib = calibration_from_spec(request.camera_intrinsics, np.eye(4))
             dyn = request.dynamic_objects
             objects = (
-                [ObjectPose(o.track_id, T) for o, T in zip(dyn, midpoints([o.pose_pair for o in dyn]))]
-                if dyn else []
+                [
+                    ObjectPose(o.track_id, T)
+                    for o, T in zip(dyn, midpoints([o.pose_pair for o in dyn]), strict=True)
+                ]
+                if dyn
+                else []
             )
             image = renderer.render(
                 calib,
@@ -212,31 +218,43 @@ class GsplatSensorsim(sensorsim_pb2_grpc.SensorsimServiceServicer):
         for item in request.items:
             try:
                 result = sensorsim_pb2.RGBRenderReturn(image_bytes=self._render(item.request))
-                items.append(sensorsim_pb2.BatchRGBRenderReturnItem(
-                    camera_name=item.camera_name, result=result, success=True))
+                items.append(
+                    sensorsim_pb2.BatchRGBRenderReturnItem(
+                        camera_name=item.camera_name, result=result, success=True
+                    )
+                )
             except (KeyError, ValueError) as exc:
-                items.append(sensorsim_pb2.BatchRGBRenderReturnItem(
-                    camera_name=item.camera_name, success=False, error_message=str(exc)))
+                items.append(
+                    sensorsim_pb2.BatchRGBRenderReturnItem(
+                        camera_name=item.camera_name, success=False, error_message=str(exc)
+                    )
+                )
         return sensorsim_pb2.BatchRGBRenderReturn(items=items)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--port", type=int, default=46100)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--artifact-glob", required=True)
-    parser.add_argument("--cache-dir", default=str(Path.home() / ".cache/metadrive_rl/nurec"))
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--cache-size", type=int, default=2, help="scenes kept on the GPU")
     parser.add_argument("--max-workers", type=int, default=4)
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
 
-    servicer = GsplatSensorsim(args.artifact_glob, args.cache_dir, args.device, args.cache_size)
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=args.max_workers),
-                         options=[("grpc.max_send_message_length", 64 << 20),
-                                  ("grpc.max_receive_message_length", 64 << 20)])
+    servicer = GsplatSensorsim(args.artifact_glob, args.device, args.cache_size)
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=args.max_workers),
+        options=[
+            ("grpc.max_send_message_length", 64 << 20),
+            ("grpc.max_receive_message_length", 64 << 20),
+        ],
+    )
     sensorsim_pb2_grpc.add_SensorsimServiceServicer_to_server(servicer, server)
     server.add_insecure_port(f"{args.host}:{args.port}")
     server.start()

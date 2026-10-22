@@ -10,14 +10,16 @@
 # Env:  ALPASIM_DIR (default ~/ext/alpasim)
 #       DRIVER_SOURCE (metadrive_external_renderer | metadrive_no_render)
 #       DRIVER_GPU (default 2; GPU 0 runs physics/CATK, GPU 1 the renderer)
-#       METADRIVE_RENDERER_ADDR (default localhost:46100)
+#       TOPOLOGY (1gpu | metadrive_4gpu; the latter expects two renderers, see
+#                 METADRIVE_RENDERER_ADDRS in the metadrive_external_renderer preset)
+#       METADRIVE_RENDERER_ADDRS (YAML list, default [localhost:46100])
 set -euo pipefail
 
 LOG_DIR=$(realpath -m "${1:?usage: run_episode.sh <log-dir> [policy-spec] [overrides...]}")
 POLICY=${2:-rule}
 shift $(( $# >= 2 ? 2 : 1 ))
 ALPASIM_DIR=${ALPASIM_DIR:-$HOME/ext/alpasim}
-export METADRIVE_RENDERER_ADDR=${METADRIVE_RENDERER_ADDR:-localhost:46100}
+export METADRIVE_RENDERER_ADDRS=${METADRIVE_RENDERER_ADDRS:-[localhost:46100]}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 PY="$ALPASIM_DIR/.venv/bin/python"
 
@@ -36,6 +38,6 @@ for _ in $(seq 60); do
 done
 
 cd "$ALPASIM_DIR"
-uv run alpasim_wizard deploy=local topology=1gpu driver=metadrive \
+uv run alpasim_wizard deploy=local topology="${TOPOLOGY:-1gpu}" driver=metadrive \
   driver_source="${DRIVER_SOURCE:-metadrive_external_renderer}" wizard.debug_flags.use_localhost=True \
   wizard.log_dir="$LOG_DIR/sim" "$@"
