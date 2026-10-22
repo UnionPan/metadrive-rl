@@ -63,6 +63,8 @@ class _SessionState:
     step: int = 0
     # Encoder features of this session's most recent decisions, newest first.
     history: list = field(default_factory=list)
+    # Most recent raw lead-gap estimates, newest last.
+    gap_estimates: list = field(default_factory=list)
 
 
 class _SessionTable:
@@ -211,7 +213,10 @@ class MetaDriveModel(BaseTrajectoryModel):
             if self.gap_head is not None:
                 gaps = self._estimate_gaps(feats, [observations[i].speed_mps for i in encode])
                 for i, g in zip(encode, gaps, strict=True):
-                    observations[i].lead_gap_m = float(g)
+                    recent = states[i].gap_estimates
+                    recent.append(float(g))
+                    del recent[: -self.spec.gap_filter_steps]
+                    observations[i].lead_gap_m = min(recent)
             if self._policy_dim is not None:
                 feats = feats[:, : self._policy_dim]
             context = getattr(self.policy, "context", 1)
@@ -338,6 +343,9 @@ class MetaDriveModel(BaseTrajectoryModel):
                 "speed_mps": obs.speed_mps,
                 "speed_source": state.kinematics_source,
                 "lead_gap_est_m": None if obs.lead_gap_m is None else round(obs.lead_gap_m, 2),
+                "lead_gap_raw_m": (
+                    round(state.gap_estimates[-1], 2) if state.gap_estimates else None
+                ),
                 "command": obs.command,
                 "lane_offset_m": state.lane_offset_m,
                 "lateral_elapsed_m": round(state.travelled_since_target_m, 3),

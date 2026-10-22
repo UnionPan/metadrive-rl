@@ -219,3 +219,24 @@ def test_policy_gets_pooled_slice_of_grid_features():
     model.encoder, model.gap_head, model._policy_dim = _GridEncoder(), _ConstGapHead(20.0), 2
     model.predict(_inputs([(0, object())], 10, 0))
     assert seen == [[0.0, 1.0]]
+
+
+def test_gap_filter_takes_min_of_recent_estimates():
+    class SeqHead(_ConstGapHead):
+        def __init__(self, seq):
+            super().__init__(0.0)
+            self.seq = iter(seq)
+
+        def __call__(self, x, v):
+            import torch
+
+            return torch.full((len(x),), next(self.seq))
+
+    model = _model("fixed:FOLLOW", decision_period_s=0.5, gap_filter_steps=3)
+    model.encoder, model.gap_head = _GridEncoder(), SeqHead([40.0, 8.0, 50.0, 50.0, 50.0])
+    poses = [(0, object())]
+    used = [
+        _record(model.predict(_inputs(poses, 10 + k, k * 100_000)))["lead_gap_est_m"]
+        for k in range(5)
+    ]
+    assert used == [40.0, 8.0, 8.0, 8.0, 50.0]

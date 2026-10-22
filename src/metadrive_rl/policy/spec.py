@@ -34,6 +34,9 @@ class PolicySpec:
     # lead gap is estimated from the camera at every driver call and drives
     # the planner's speed governor for all candidates.
     gap_head: str | None = None
+    # The governor uses the minimum of the last this-many estimates: a missed
+    # lead must then persist across consecutive frames to go unnoticed.
+    gap_filter_steps: int = 1
     planner: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
