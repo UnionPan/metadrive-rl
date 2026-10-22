@@ -131,4 +131,7 @@ def read_rollout(path: str | Path) -> RolloutLog:
 
 
 def find_rollouts(run_dir: str | Path) -> list[Path]:
-    return sorted(Path(run_dir).glob("**/rollouts/**/*.asl"))
+    """Finished rollout logs: AlpaSim writes ``_complete`` next to the ASL when
+    a rollout ends; interrupted runs leave partial logs without it."""
+    return sorted(p for p in Path(run_dir).glob("**/rollouts/**/*.asl")
+                  if (p.parent / "_complete").exists())

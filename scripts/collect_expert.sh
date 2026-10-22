@@ -31,7 +31,7 @@ PENDING=$("$PY" - "$SPLITS" "$SPLIT" "$OUT" <<'EOF'
 import sys, yaml
 from pathlib import Path
 splits, split, out = sys.argv[1], sys.argv[2], Path(sys.argv[3])
-done = {p.parent.parent.name for p in out.glob("**/rollouts/*/*/rollout.asl")}
+done = {p.parent.parent.name for p in out.glob("**/rollouts/*/*/_complete")}
 print(",".join(s["scene_id"] for s in yaml.safe_load(open(splits))[split]
                if s["scene_id"] not in done))
 EOF

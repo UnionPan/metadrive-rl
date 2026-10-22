@@ -5,6 +5,8 @@
 # Env:   RENDER_ENV      conda env with torch 2.4 + gsplat (default metadrive-render)
 #        SCENE_GLOB      default ~/ext/alpasim/data/nre-artifacts/all-usdzs/*.usdz
 #        RENDER_CACHE    extracted checkpoints (default ~/ext/render-cache)
+#        CACHE_SIZE      scenes kept on the GPU (default 6, ~1.2 GB each); must be
+#                        >= concurrent rollouts on distinct scenes or loads thrash
 set -euo pipefail
 
 PORT=${1:-46100}
@@ -18,4 +20,4 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$RENDER_ENV"
 export CUDA_VISIBLE_DEVICES=$GPU
 exec python -m metadrive_rl.render.server --port "$PORT" \
-  --artifact-glob "$SCENE_GLOB" --cache-dir "$RENDER_CACHE"
+  --artifact-glob "$SCENE_GLOB" --cache-dir "$RENDER_CACHE" --cache-size "${CACHE_SIZE:-6}"
