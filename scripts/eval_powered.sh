@@ -5,7 +5,9 @@
 # then delete that batch's scene files. Policies see identical scenes.
 #
 # Usage: scripts/eval_powered.sh <out-dir> LABEL=POLICY_SPEC [LABEL=POLICY_SPEC ...]
-# Env:   BATCH (24), ROLLOUTS (2), SPLIT (eval_big)
+# Env:   BATCH (24), ROLLOUTS (2), SPLIT (eval_big),
+#        TOPOLOGY (metadrive_4gpu), RENDERER_GPUS ("1 3"; one gsplat server per GPU,
+#        ports 46100, 46101, ...)
 # Then:  python -m metadrive_rl.evaluation.summarize <out-dir>/<label> ... --common-scenes
 set -uo pipefail
 
@@ -17,16 +19,22 @@ ALPASIM_DIR=${ALPASIM_DIR:-$HOME/ext/alpasim}
 PY=$ALPASIM_DIR/.venv/bin/python
 SPLIT=${SPLIT:-eval_big}
 BATCH=${BATCH:-24}
-export TOPOLOGY=metadrive_4gpu METADRIVE_RENDERER_ADDRS='[localhost:46100,localhost:46101]'
+export TOPOLOGY=${TOPOLOGY:-metadrive_4gpu}
+read -r -a GPUS <<< "${RENDERER_GPUS:-1 3}"
+addrs=()
+for i in "${!GPUS[@]}"; do addrs+=("localhost:$(( 46100 + i ))"); done
+export METADRIVE_RENDERER_ADDRS="[$(IFS=,; echo "${addrs[*]}")]"
 
 restart_renderers() {
   for pid in $(pgrep -f "^python -m metadrive_rl.render.server"); do kill "$pid"; done
   sleep 3
-  "$HERE/serve_gsplat_renderer.sh" 46100 1 > "$OUT/renderer_1.log" 2>&1 &
-  "$HERE/serve_gsplat_renderer.sh" 46101 3 > "$OUT/renderer_2.log" 2>&1 &
+  for i in "${!GPUS[@]}"; do
+    "$HERE/serve_gsplat_renderer.sh" $(( 46100 + i )) "${GPUS[$i]}" > "$OUT/renderer_$i.log" 2>&1 &
+  done
   for _ in $(seq 120); do
-    grep -q "serving on" "$OUT/renderer_1.log" 2>/dev/null \
-      && grep -q "serving on" "$OUT/renderer_2.log" 2>/dev/null && return 0
+    local up=0
+    for i in "${!GPUS[@]}"; do grep -q "serving on" "$OUT/renderer_$i.log" 2>/dev/null && up=$(( up + 1 )); done
+    (( up == ${#GPUS[@]} )) && return 0
     sleep 2
   done
   echo "renderers did not start" >&2; return 1
