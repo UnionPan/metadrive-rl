@@ -8,7 +8,9 @@
 # Env:   BATCH (24), ROLLOUTS (2), SPLIT (eval_big),
 #        TOPOLOGY (metadrive_4gpu), RENDERER_GPUS ("1 3"; one gsplat server per GPU on
 #        ports RENDERER_PORT, RENDERER_PORT+1, ...; default 46110 so it never touches
-#        renderers serving another stack), DRIVER_PORT / BASEPORT (see run_episode.sh)
+#        renderers serving another stack), DRIVER_PORT / BASEPORT (see run_episode.sh),
+#        BATCHES (batch indices to run, default all; instances on disjoint batches
+#        can share <out-dir> and run concurrently on separate stacks)
 # Then:  python -m metadrive_rl.evaluation.summarize <out-dir>/<label> ... --common-scenes
 set -uo pipefail
 
@@ -53,6 +55,7 @@ n=$("$PY" -c "import sys, yaml; print(len(yaml.safe_load(open(sys.argv[1]))[sys.
   "$REPO/configs/evaluation/splits.yaml" "$SPLIT")
 for start in $(seq 0 "$BATCH" $(( n - 1 ))); do
   b=$(( start / BATCH ))
+  if [[ -n "${BATCHES:-}" && " $BATCHES " != *" $b "* ]]; then continue; fi
   bdir=$OUT/batches/b$b
   mkdir -p "$bdir"
   "$PY" - "$REPO/configs/evaluation/splits.yaml" "$SPLIT" "$start" "$BATCH" "$bdir/splits.yaml" <<'EOF'
