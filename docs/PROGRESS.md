@@ -277,6 +277,15 @@ small batch because all rollouts finish together and their evaluation runs
 after the last step (with 4 slots it overlapped with the next batch). Larger
 batches (GRPO: 64 rollouts) amortise this.
 
+**GPU utilisation and concurrent stacks.** During single-stack branch
+collection the GPUs averaged ~25% (10/29/0/60%) with the CPU mostly idle: the
+pipeline is latency-bound (serial gRPC steps per rollout), not compute-bound.
+Stacks can now run side by side (per-stack driver port, wizard base port and
+Docker Compose project; evaluation renderers on their own ports). Measured with
+branch collection and the 96-scene evaluation running concurrently: 7.2 + 6.2 =
+**13.4 simulation steps/s vs ~5.0 for one stack (2.7×)**, still with >20 GB free
+per GPU and ~10 of 128 cores busy.
+
 **GRPO smoke run** (`scripts/grpo_loop.sh`, `runs/grpo/smoke/iterations.jsonl`):
 SFT seed 0 as init and reference; 16 fixed training scenes (first 16 of the
 train split), groups of 4 rollouts per scene, 12 s episodes, temperature 1.0,

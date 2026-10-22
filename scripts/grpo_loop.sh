@@ -7,12 +7,13 @@
 # writes the next checkpoint. Wall time and rollouts are logged per iteration.
 #
 # Usage: scripts/grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]
-# Env:   TEMPERATURE (1.0), KL_COEF (0.05), PROGRESS_WEIGHT (0.2), SPLIT (train),
+# Env:   TEMPERATURE (1.0), KL_COEF (0.05), LR (1e-4), PROGRESS_WEIGHT (0.2), SPLIT (train),
 #        SPLITS (splits file, e.g. a training subset), STEPS (sim steps per episode, 200),
 #        TOPOLOGY / METADRIVE_RENDERER_ADDRS (see run_episode.sh),
 #        EVAL_SPLIT (if set, evaluate each new checkpoint greedily on it), EVAL_ROLLOUTS (2),
 #        SPLIT_CYCLE (space-separated split names; iteration i samples the (i-1) mod n-th),
-#        START (first iteration, to resume; the policy then starts from it<START-1>/policy.pt)
+#        START (first iteration, to resume; the policy then starts from it<START-1>/policy.pt),
+#        INIT_POLICY (start from this checkpoint instead, e.g. to continue another run)
 set -euo pipefail
 
 SFT=$(realpath "${1:?usage: grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]}")
@@ -24,8 +25,8 @@ PY=${ALPASIM_DIR:-$HOME/ext/alpasim}/.venv/bin/python
 
 mkdir -p "$RUN"
 START=${START:-1}
-policy=$SFT
-if (( START > 1 )); then
+policy=${INIT_POLICY:-$SFT}
+if (( START > 1 )) && [[ -z "${INIT_POLICY:-}" ]]; then
   policy=$RUN/it$(( START - 1 ))/policy.pt
 fi
 for it in $(seq "$START" "$ITERS"); do
@@ -52,7 +53,7 @@ YAML
     --features "$dir/features" --progress-weight "${PROGRESS_WEIGHT:-0.2}" > "$dir/build.json"
   CUDA_VISIBLE_DEVICES=${TRAIN_GPU:-2} "$PY" -m metadrive_rl.training.grpo update "$dir/batch" \
     --policy "$policy" --ref "$SFT" --out "$dir/policy.pt" --version "grpo:$(basename "$RUN"):it$it" \
-    --kl-coef "${KL_COEF:-0.05}" > "$dir/update.json"
+    --kl-coef "${KL_COEF:-0.05}" --lr "${LR:-1e-4}" > "$dir/update.json"
   done_at=$(date +%s)
   "$PY" - "$dir" "$start" "$collected" "$done_at" <<'EOF' | tee -a "$RUN/iterations.jsonl"
 import json, sys
