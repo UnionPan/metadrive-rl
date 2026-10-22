@@ -63,6 +63,9 @@ class PlannedTrajectory:
 class RoutePath:
     """Arc-length parameterised reference polyline in the rig frame."""
 
+    HEAD_EXTENSION_M = 20.0
+    TAIL_EXTENSION_M = 200.0
+
     def __init__(self, waypoints_xy: np.ndarray | None, step_m: float):
         pts = self._clean(waypoints_xy)
         seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
@@ -95,8 +98,8 @@ class RoutePath:
         # Extend both ends so projections and long horizons stay on the path.
         head_dir = pts[1] - pts[0]
         tail_dir = pts[-1] - pts[-2]
-        head = pts[0] - 20.0 * head_dir / np.linalg.norm(head_dir)
-        tail = pts[-1] + 200.0 * tail_dir / np.linalg.norm(tail_dir)
+        head = pts[0] - RoutePath.HEAD_EXTENSION_M * head_dir / np.linalg.norm(head_dir)
+        tail = pts[-1] + RoutePath.TAIL_EXTENSION_M * tail_dir / np.linalg.norm(tail_dir)
         return np.vstack([head, pts, tail])
 
     def project(self, point: np.ndarray) -> tuple[float, float]:
@@ -107,6 +110,10 @@ class RoutePath:
         along = float(rel @ tangent)
         lateral = float(tangent[0] * rel[1] - tangent[1] * rel[0])
         return self.s[i] + along, lateral
+
+    def covers(self, s: float) -> bool:
+        """Whether arc length ``s`` lies on the given waypoints, not an extension."""
+        return self.HEAD_EXTENSION_M <= s <= self.s[-1] - self.TAIL_EXTENSION_M
 
     def sample(self, s: np.ndarray, offset: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         s = np.clip(s, self.s[0], self.s[-1])

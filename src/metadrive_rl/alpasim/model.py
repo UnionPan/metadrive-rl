@@ -170,7 +170,13 @@ class MetaDriveModel(BaseTrajectoryModel):
         if route_xy is None:
             state.route_offset_m = None
             return
-        offset = RoutePath(route_xy, self.planner.cfg.path_step_m).project(np.zeros(2))[1]
+        path = RoutePath(route_xy, self.planner.cfg.path_step_m)
+        s, offset = path.project(np.zeros(2))
+        if not path.covers(s):
+            # Ego is past the route's end (or before its start): the offset to
+            # the straight extension says nothing about re-anchoring.
+            state.route_offset_m = None
+            return
         if state.route_offset_m is not None:
             jump = offset - state.route_offset_m
             if abs(jump) > REANCHOR_JUMP_M:
