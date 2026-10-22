@@ -50,3 +50,30 @@ def test_sft_learns_feature_dependent_action(tmp_path):
     assert summary["best"]["val"]["regret_mean_m"] < 0.3
     policy = load_neural_policy(str(out / "best.pt"))
     assert policy.encoder_name == "fake"
+
+
+def test_dpo_pairs_prefer_lowest_ade():
+    import torch
+
+    from metadrive_rl.training.dpo import preference_pairs
+
+    ade = torch.tensor([[0.2, 0.5, 3.0, 5.0] + [9.0] * (NUM_ACTIONS - 4)])
+    pairs = preference_pairs(ade, margin=1.0, max_per_decision=2)
+    assert pairs.tolist() == [[0, 0, 2], [0, 0, 3]]  # hardest qualifying negatives first
+
+
+def test_dpo_runs_from_sft_checkpoint(tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    rng = np.random.default_rng(0)
+    for split, n in (("train", 256), ("val", 64)):
+        _write_split(data, split, n, rng)
+    subprocess.run([sys.executable, "-m", "metadrive_rl.training.sft", "--data", str(data),
+                    "--encoder", "fake", "--out", str(tmp_path / "sft"), "--epochs", "20"], check=True)
+    subprocess.run([sys.executable, "-m", "metadrive_rl.training.dpo", "--data", str(data),
+                    "--sft", str(tmp_path / "sft" / "best.pt"), "--out", str(tmp_path / "dpo"),
+                    "--epochs", "10"], check=True)
+    summary = json.loads((tmp_path / "dpo" / "summary.json").read_text())
+    assert summary["pairs"] > 0
+    assert summary["best"]["val"]["regret_mean_m"] <= summary["sft_val"]["regret_mean_m"]
+    assert load_neural_policy(str(tmp_path / "dpo" / "best.pt")).encoder_name == "fake"
