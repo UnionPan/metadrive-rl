@@ -22,6 +22,9 @@ SIZES = {"train": 16, "val": 4, "test": 4}
 # They come after the val/test positions of the seeded shuffle, so val and test
 # are unchanged.
 TRAIN_EXTRA = 48
+# Closed-loop evaluation splits, frozen before any closed-loop tuning: 4 scenes
+# could not separate policies (scene-level bootstrap CIs spanned [0, 0.75]).
+CLOSED_LOOP = {"val_cl": 16, "test_cl": 16}
 DEVELOPMENT_SCENES = ["clipgt-01d503d4-449b-46fc-8d78-9085e70d3554"]
 
 
@@ -46,6 +49,10 @@ def main() -> None:
         "val": pool[n_train : n_train + SIZES["val"]],
         "test": pool[n_train + SIZES["val"] : end_test],
     }
+    start = end_test + TRAIN_EXTRA
+    for name, size in CLOSED_LOOP.items():
+        chosen[name] = pool[start : start + size]
+        start += size
     splits = {
         name: [
             {
