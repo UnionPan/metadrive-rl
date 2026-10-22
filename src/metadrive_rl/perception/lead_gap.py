@@ -97,7 +97,10 @@ def main() -> None:
     parser.add_argument("--data", type=Path, required=True)
     parser.add_argument("--encoder", default="dinov2-base")
     parser.add_argument("--context", type=int, default=3)
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--eval", type=Path, nargs="+", help="only score these heads on the validation frames"
+    )
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.05)
@@ -110,6 +113,12 @@ def main() -> None:
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     train, val, held = _splits(args.data, args.encoder, args.context, args.holdout_scenes, device)
+    if args.eval:
+        for path in args.eval:
+            print(path, json.dumps(metrics(load_gap_head(path, device)[0], val)))
+        return
+    if args.out is None:
+        parser.error("--out is required for training")
     head = GapHead(train["x"].shape[1]).to(device)
     opt = torch.optim.AdamW(head.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     args.out.mkdir(parents=True, exist_ok=True)
