@@ -226,6 +226,32 @@ next step is simulator-verified preferences from matched-state branches
 AlpaSim's at-fault/offroad and progress outcomes). These are simulator-derived
 preferences, not RLHF.
 
+## M4 — distributed RLVR (in progress)
+
+**Topology benchmark** (identical workload: rule policy, 4 val scenes × 2
+rollouts, CATK, gsplat cameras). `metadrive_4gpu`: physics + CATK on GPU 0,
+renderers on GPUs 1 and 3, driver on GPU 2, second CATK replica on GPU 3,
+8 concurrent rollouts (vs. 4 on one GPU per service).
+
+| Topology | Videos | Simulation | Steps/s | Post-processing | Wall |
+|---|---|---|---|---|---|
+| 1gpu | on | 563 s | 2.83 | 102 s | 749 s |
+| metadrive_4gpu | on | 310 s | 5.14 | 330 s | 721 s |
+| 1gpu | off | 504 s | 3.16 | 60 s | 653 s |
+| metadrive_4gpu | off | 317 s | 5.02 | 212 s | 602 s |
+
+Simulation throughput improves 1.6–1.8×; end-to-end only 1.04–1.08× on this
+small batch because all rollouts finish together and their evaluation runs
+after the last step (with 4 slots it overlapped with the next batch). Larger
+batches (GRPO: 64 rollouts) amortise this.
+
+**Evaluation noise: CATK samples.** Reactive traffic draws each agent's next
+motion token from the top-5 at temperature 1.0, so the same deterministic
+policy can get different outcomes in different runs (rule policy: at-fault
+collision rate 0.50 in one run, 0.75 in another, on the same 4 scenes).
+Comparisons must average repeated runs; single-run differences on few scenes
+are noise.
+
 ## Tests
 
 - `pytest` in the AlpaSim venv: planner, plugin, labels, SFT/DPO/GRPO
