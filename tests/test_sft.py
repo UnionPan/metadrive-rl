@@ -77,3 +77,13 @@ def test_dpo_runs_from_sft_checkpoint(tmp_path):
     assert summary["pairs"] > 0
     assert summary["best"]["val"]["regret_mean_m"] <= summary["sft_val"]["regret_mean_m"]
     assert load_neural_policy(str(tmp_path / "dpo" / "best.pt")).encoder_name == "fake"
+
+
+def test_route_profile_ignores_nonfinite_waypoints():
+    # Pattern seen in AlpaSim routes: 20 waypoints ~4.2 m apart, last 5 NaN.
+    xs = np.arange(20) * 4.2
+    route = np.stack([xs, 0.02 * xs], 1)
+    route[15:] = np.nan
+    profile = route_lateral_profile(route)
+    assert np.all(np.isfinite(profile))
+    assert profile == pytest.approx(0.02 * np.array([5, 10, 20, 40]), rel=1e-2)

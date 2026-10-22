@@ -15,9 +15,13 @@ STATE_DIM = 1 + N_COMMANDS + 1 + len(ROUTE_LOOKAHEAD_M)
 
 def route_lateral_profile(route_xy: np.ndarray | None) -> np.ndarray:
     """Route lateral offset (m, left +) at fixed distances ahead along the route."""
-    if route_xy is None or len(route_xy) < 2:
+    if route_xy is None or np.size(route_xy) == 0:
         return np.zeros(len(ROUTE_LOOKAHEAD_M))
-    pts = route_xy[:, :2]
+    # AlpaSim routes can end in NaN waypoints; NaNs would corrupt np.interp.
+    pts = np.asarray(route_xy, dtype=float)[:, :2]
+    pts = pts[np.isfinite(pts).all(1)]
+    if len(pts) < 2:
+        return np.zeros(len(ROUTE_LOOKAHEAD_M))
     s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
     # Arc length is measured from the route point nearest the ego.
     s = s - s[int(np.argmin(np.linalg.norm(pts, axis=1)))]

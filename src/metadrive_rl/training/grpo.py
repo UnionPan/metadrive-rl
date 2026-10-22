@@ -33,6 +33,7 @@ import torch.nn.functional as F
 
 from metadrive_rl.policy.features import state_features
 from metadrive_rl.policy.neural import PolicyHead, save_checkpoint
+from metadrive_rl.training.sft import stack_context
 
 
 def rollout_rewards(rollout_dir: Path, progress_weight: float) -> dict[str, tuple[str, float]]:
@@ -70,7 +71,8 @@ def build(rollout_dir: Path, batch_dir: Path, feature_dir: Path, progress_weight
                 continue
             feats.append(np.load(f))
             rows.append({
-                "decision_id": d["decision_id"], "scene_id": scene, "rollout_id": log.rollout_uuid,
+                "decision_id": d["decision_id"], "scene_id": scene, "rollout_uuid": log.rollout_uuid,
+                "time_us": d["time_us"],
                 "policy_version": d["policy_version"], "action": d["action_index"],
                 "behaviour_logp": d["log_prob"], "reward": reward, "advantage": advantage,
                 "state": state_features(d["speed_mps"], d["command"], d["lane_offset_m"],
@@ -102,13 +104,15 @@ def update(batch_dir: Path, policy_path: Path, ref_path: Path, out: Path, *, cli
            kl_coef: float, epochs: int, lr: float, batch_size: int, version: str) -> dict:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     df = pl.read_parquet(batch_dir / "decisions.parquet")
-    x = torch.tensor(np.load(batch_dir / "features.npy"), device=device)
+    policy, ckpt = load_head(policy_path, device)
+    # Batches store single-decision features; rebuild the policy's frame stack.
+    feats = stack_context(df, np.load(batch_dir / "features.npy"), ckpt.get("context", 1))
+    x = torch.tensor(feats, device=device)
     s = torch.tensor(np.array(df["state"].to_list()), dtype=torch.float32, device=device)
     a = torch.tensor(df["action"].to_numpy(), device=device)
     old_logp = torch.tensor(df["behaviour_logp"].to_numpy(), dtype=torch.float32, device=device)
     adv = torch.tensor(df["advantage"].to_numpy(), dtype=torch.float32, device=device)
 
-    policy, ckpt = load_head(policy_path, device)
     reference, _ = load_head(ref_path, device)
     reference.eval().requires_grad_(False)
     with torch.no_grad():
@@ -139,7 +143,7 @@ def update(batch_dir: Path, policy_path: Path, ref_path: Path, out: Path, *, cli
                 "ratio_mean": float(ratio.mean()),
             })
     save_checkpoint(out, policy, ckpt["encoder"], version,
-                    {"grpo": {"batch": str(batch_dir), "parent": str(policy_path),
+                    {"context": ckpt.get("context", 1), "grpo": {"batch": str(batch_dir), "parent": str(policy_path),
                               "reference": str(ref_path), "history": history}})
     return {"decisions": len(a), "advantage_std": float(adv.std()), "final": history[-1]}
 

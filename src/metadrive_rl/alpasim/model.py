@@ -60,6 +60,7 @@ class _SessionState:
     route_offset_m: float | None = None
     kinematics_source: str = "dynamic_state"
     step: int = 0
+    # Encoder features of this session's most recent decisions, newest first.
     history: list = field(default_factory=list)
 
 
@@ -185,8 +186,15 @@ class MetaDriveModel(BaseTrajectoryModel):
         due = [i for i, s in enumerate(states) if self._decision_due(s, observations[i])]
         if self.encoder is not None and due:
             feats = self.encoder.encode([observations[i].image for i in due])
+            context = getattr(self.policy, "context", 1)
             for i, f in zip(due, feats, strict=True):
-                observations[i].features = f
+                history = states[i].history
+                history.insert(0, f)
+                del history[context:]
+                stacked = np.zeros(context * len(f), dtype=f.dtype)
+                for k, past in enumerate(history):
+                    stacked[k * len(f) : (k + 1) * len(f)] = past
+                observations[i].features = stacked
         return [
             self._step(observations[i], states[i], i in due) for i in range(len(states))
         ]
@@ -252,7 +260,8 @@ class MetaDriveModel(BaseTrajectoryModel):
                 state.travelled_since_target_m = 0.0
             state.base_offset_m, state.lane_offset_m = state.lane_offset_m, target
             if self.feature_dir is not None and obs.features is not None:
-                np.save(self.feature_dir / f"{state.decision_id}.npy", obs.features)
+                # Single-frame features; batches rebuild the stack from these.
+                np.save(self.feature_dir / f"{state.decision_id}.npy", state.history[0])
             if self.image_dir is not None and obs.image is not None:
                 Image.fromarray(obs.image).save(self.image_dir / f"{state.decision_id}.jpg",
                                                 quality=95)

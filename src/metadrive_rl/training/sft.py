@@ -35,10 +35,32 @@ import torch.nn.functional as F
 from metadrive_rl.policy.neural import PolicyHead, save_checkpoint
 
 
-def load_split(data_dir: Path, split: str, encoder: str, device: torch.device) -> dict:
+def stack_context(df: pl.DataFrame, feats: np.ndarray, context: int) -> np.ndarray:
+    """Concatenate each decision's features with its ``context - 1`` predecessors
+    in the same rollout (zeros before the first decision): a frame-stack memory."""
+    if context == 1:
+        return feats
+    out = np.zeros((len(feats), context * feats.shape[1]), dtype=feats.dtype)
+    order = df.with_row_index("row").sort("rollout_uuid", "time_us")
+    for _, group in order.group_by("rollout_uuid", maintain_order=True):
+        rows = group["row"].to_list()
+        for i, row in enumerate(rows):
+            for k in range(context):
+                if i - k >= 0:
+                    out[row, k * feats.shape[1] : (k + 1) * feats.shape[1]] = feats[rows[i - k]]
+    return out
+
+
+def load_split(data_dir: Path, split: str, encoder: str, device: torch.device,
+               context: int = 1) -> dict:
     df = pl.read_parquet(data_dir / f"{split}.parquet")
     feats = np.load(data_dir / f"{split}.{encoder}.npy")
     assert len(feats) == len(df), "features out of sync with dataset rows"
+    feats = stack_context(df, feats, context)
+    for name, arr in (("features", feats), ("state", np.array(df["state"].to_list())),
+                      ("ade_m", np.array(df["ade_m"].to_list()))):
+        if not np.isfinite(arr).all():
+            raise ValueError(f"{data_dir}/{split}: non-finite values in {name}")
     return {
         "features": torch.tensor(feats, device=device),
         "state": torch.tensor(np.array(df["state"].to_list()), dtype=torch.float32, device=device),
@@ -89,14 +111,16 @@ def main() -> None:
                         help="temperature (m): soft labels, or logits = -ADE/tau")
     parser.add_argument("--hidden", type=int, default=512)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--context", type=int, default=1,
+                        help="decisions of image features per input (frame-stack memory)")
     parser.add_argument("--no-image", action="store_true",
                         help="ablation: zero the image features (state-only policy)")
     args = parser.parse_args()
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    train = load_split(args.data, "train", args.encoder, device)
-    val = load_split(args.data, "val", args.encoder, device)
+    train = load_split(args.data, "train", args.encoder, device, args.context)
+    val = load_split(args.data, "val", args.encoder, device, args.context)
     if args.no_image:
         for split in (train, val):
             split["features"].zero_()
@@ -127,9 +151,10 @@ def main() -> None:
             if row["val"]["regret_mean_m"] < best[0]:
                 best = (row["val"]["regret_mean_m"], row)
                 save_checkpoint(args.out / "best.pt", head, args.encoder,
-                                f"sft:{args.out.name}:e{epoch + 1}", {"metrics": row})
+                                f"sft:{args.out.name}:e{epoch + 1}",
+                                {"metrics": row, "context": args.context})
     save_checkpoint(args.out / "last.pt", head, args.encoder, f"sft:{args.out.name}:last",
-                    {"metrics": row})
+                    {"metrics": row, "context": args.context})
     summary = {"best": best[1], "train_samples": n, "val_samples": len(val["label"]),
                "seconds": round(time.time() - start, 1),
                "peak_mem_mib": round(torch.cuda.max_memory_allocated() / 2**20, 1)

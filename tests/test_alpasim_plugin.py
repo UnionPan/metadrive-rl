@@ -134,3 +134,29 @@ def test_speed_falls_back_to_pose_history_when_dynamic_state_is_zero():
     rec = _record(model.predict(p))
     assert rec["speed_source"] == "pose_history"
     assert rec["speed_mps"] == pytest.approx(4.0)
+
+
+def test_frame_stack_context_reaches_the_policy():
+    from metadrive_rl.policy.neural import NeuralPolicy, PolicyHead
+
+    class CountingEncoder:
+        calls = 0
+
+        def encode(self, images):
+            CountingEncoder.calls += 1
+            return [np.full(2, float(CountingEncoder.calls), np.float32) for _ in images]
+
+    seen = []
+
+    class RecordingPolicy(NeuralPolicy):
+        def distribution(self, obs):
+            seen.append(obs.features.tolist())
+            return super().distribution(obs)
+
+    model = _model("rule", decision_period_s=0.5)
+    model.policy = RecordingPolicy(PolicyHead(6), "fake", "test", context=3)
+    model.encoder = CountingEncoder()
+    poses = [(0, object())]
+    for k in range(11):  # decisions at steps 0, 5, 10
+        model.predict(_inputs(poses, 10 + k, k * 100_000))
+    assert seen == [[1, 1, 0, 0, 0, 0], [2, 2, 1, 1, 0, 0], [3, 3, 2, 2, 1, 1]]

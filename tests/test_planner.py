@@ -110,3 +110,11 @@ def test_lane_change_completes_under_replanning(planner):
         dx, dy = plan.xy[0]
         x, y, travelled = x + dx, y + dy, travelled + float(np.hypot(dx, dy))
     assert y == pytest.approx(3.5, abs=0.1)
+
+
+def test_nonfinite_route_waypoints_are_ignored(planner):
+    route = STRAIGHT_ROUTE.copy()
+    route[15:] = np.nan  # AlpaSim can send routes with trailing NaN waypoints
+    plan = planner.plan(HighLevelAction(Mode.CRUISE, 10.0), 10.0, 0.0, route)
+    assert np.all(np.isfinite(plan.xy)) and not plan.flags["fallback"]
+    assert plan.xy[-1, 0] > 30.0

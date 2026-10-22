@@ -22,7 +22,8 @@ def test_update_moves_probability_toward_positive_advantage(tmp_path):
     advantage = np.where(actions == 3, 1.0, -0.2)  # action 3 led to better outcomes
     batch = tmp_path / "batch"
     batch.mkdir()
-    pl.DataFrame({"action": actions, "behaviour_logp": logp[np.arange(n), actions],
+    pl.DataFrame({"rollout_uuid": ["r"] * n, "time_us": np.arange(n),
+                  "action": actions, "behaviour_logp": logp[np.arange(n), actions],
                   "advantage": advantage, "state": state.tolist()}).write_parquet(
         batch / "decisions.parquet")
     np.save(batch / "features.npy", feats)
