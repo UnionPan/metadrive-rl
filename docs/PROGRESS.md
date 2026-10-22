@@ -746,6 +746,53 @@ GRPO-it8 runs on identical scenes. Two `eval_powered.sh` instances share the
 output directory on disjoint batches: batches 0–1 on a single-GPU stack on
 GPU 0, and batches 2–3 on the 4-GPU stack once the SFT/GRPO pass releases it.
 
+## Direction change: Alpamayo baselines (2026-10-22)
+
+The user dropped the custom MLP policy head as the main model. NVIDIA's
+Alpamayo 1 (R1), Alpamayo 1.5 and Alpamayo 2 become the baselines. The MLP
+GRPO-with-governor run was stopped after 5 iterations. The eval_big governor
+pass (always-FOLLOW, always-FOLLOW + v2, SFT + v2) is still running.
+
+**DINOv3 (access granted 2026-10-22): no gain over DINOv2 in this setup.**
+- SFT policy head, 3-decision context, same recipe: val regret 0.713 ± 0.086
+  (DINOv3-B/16) vs 0.680 ± 0.018 (DINOv2-B/14); always-FOLLOW is 0.801.
+- Gap head (conv on a 6×8 grid, closed-loop val frames before contact):
+
+  | | recall < 10 m | dangerous miss | false alarm | close-range bias |
+  |---|---|---|---|---|
+  | DINOv2 | 0.874 | 0.062 | 0.014 | +2.7 m |
+  | DINOv3 | 0.878 | 0.061 | 0.025 | +3.7 m |
+
+**Alpamayo feasibility on 4× Quadro RTX 8000 (Turing, sm_75):**
+
+| model | HF repo (public) | bf16 size | AlpaSim plugin |
+|---|---|---|---|
+| Alpamayo 1 (R1) | `nvidia/Alpamayo-R1-10B` | 22.2 GB | `alpamayo1` |
+| Alpamayo 1.5 | `nvidia/Alpamayo-1.5-10B` | 22.2 GB | `alpamayo1_5` |
+| Alpamayo 2 Super | `nvidia/Alpamayo2-Super` (32B) | 71.6 GB | `alpamayo2` |
+
+- The packages (`alpamayo_r1`, `alpamayo1_5`, `alpamayo2_super`) and driver
+  plugins ship with the installed AlpaSim. They need 4 cameras × 4 frames at
+  10 Hz: cross-left, front-wide, cross-right (120°) and front-tele (30°).
+- The gsplat renderer renders all four cameras. Against the recorded photos:
+  front-wide 18–22 dB PSNR, tele 15–22 dB, cross cameras 14–22 dB. Geometry
+  matches; the gap is photometric (no camera response model).
+- The checkpoints ask for FlashAttention 2, which has no Turing kernels, so
+  attention must be SDPA (`config.attn_implementation`).
+- `scripts/bench_alpamayo.py`, Alpamayo 1 on one GPU, 2,686 prompt tokens
+  (16 images):
+
+  | dtype | latency per inference | peak memory |
+  |---|---|---|
+  | bf16 (emulated on Turing) | 86–89 s | 23.4 GiB |
+  | **fp16** | **6.4 s** | 23.9 GiB |
+
+  Both give finite trajectories and sensible reasoning text. Across 3 sampled
+  runs the lateral endpoint spreads 4–13 m in fp16 vs 1.7–2.0 m in bf16, so
+  fp16 numerics must be validated before fp16 results count.
+- Alpamayo 2 Super (72 GB in 16-bit) needs two cards and will be roughly 3×
+  slower than the 10B models. Not yet tried.
+
 ## Tests
 
 - `pytest` in the AlpaSim venv: planner (incl. governor), plugin, labels,
