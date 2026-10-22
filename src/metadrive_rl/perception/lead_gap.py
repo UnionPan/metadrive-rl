@@ -106,6 +106,12 @@ def main() -> None:
     parser.add_argument("--weight-decay", type=float, default=0.05)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument(
+        "--quantile",
+        type=float,
+        help="fit this quantile of the gap (pinball loss) instead of a Huber mean; "
+        "< 0.5 errs toward 'closer', the safe side for a speed governor",
+    )
+    parser.add_argument(
         "--holdout-scenes", type=int, default=0, help="train scenes moved to validation"
     )
     args = parser.parse_args()
@@ -127,9 +133,11 @@ def main() -> None:
     for epoch in range(args.epochs):
         head.train()
         for idx in torch.randperm(n, device=device).split(128):
-            loss = F.huber_loss(
-                head(train["x"][idx], train["v"][idx]) / SCALE_M, train["y"][idx] / SCALE_M
-            )
+            err = (train["y"][idx] - head(train["x"][idx], train["v"][idx])) / SCALE_M
+            if args.quantile is None:
+                loss = F.huber_loss(err, torch.zeros_like(err))
+            else:
+                loss = torch.maximum(args.quantile * err, (args.quantile - 1) * err).mean()
             opt.zero_grad()
             loss.backward()
             opt.step()
@@ -149,7 +157,13 @@ def main() -> None:
                 )
     (args.out / "summary.json").write_text(
         json.dumps(
-            {"best": best[1], "seed": args.seed, "data": str(args.data), "holdout_scenes": held},
+            {
+                "best": best[1],
+                "seed": args.seed,
+                "quantile": args.quantile,
+                "data": str(args.data),
+                "holdout_scenes": held,
+            },
             indent=1,
         )
     )

@@ -33,6 +33,10 @@ def gap_metrics(pred: np.ndarray, true: np.ndarray) -> dict:
         "recall_lead_within_10m": frac(close, pred < 10.0),
         "dangerous_miss_rate": frac(close, pred > 20.0),
         "false_alarm_rate": frac(clear, pred < 10.0),
+        # Mean signed error near the lead; > 0 means the lead looks farther than it is.
+        "bias_lead_within_15m": float((pred - true)[true < 15.0].mean())
+        if (true < 15.0).any()
+        else None,
     }
 
 

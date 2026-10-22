@@ -573,12 +573,33 @@ This is a hand-designed prior, so the evaluation must separate it from the
 learned policy: each policy with and without the governor, plus
 always-FOLLOW + governor, on matched scenes.
 
-**Ablation (running):** always-FOLLOW, SFT and GRPO-it8, each with the
-governor (gap head `gap_dense_expert_vis_grid_s0`, seed 0 chosen in advance;
-range 25 m), on val_cl with 2 rollouts, on a single-GPU stack (GPU 1). The
-no-governor runs are the existing val_cl evaluations; compare on matched
-scenes. A grid encoder's output begins with the pooled features, so the
-policies get exactly their training features from the same forward pass.
+**Ablation:** always-FOLLOW, SFT and GRPO-it8, each with the governor
+(gap head `gap_dense_expert_vis_grid_s0`, seed 0 chosen in advance; range
+25 m), on val_cl with 2 rollouts, on a single-GPU stack (GPU 1), compared on
+matched scenes with the existing no-governor runs. A grid encoder's output
+begins with the pooled features, so the policies get exactly their training
+features from the same forward pass.
+
+*always-FOLLOW + governor* (12 matched scenes): score +0.000 [−0.125,
++0.125], at-fault collision +0.000, progress −0.036 [−0.092, 0.000]. Only
+2 scenes change, one each way (CATK-level noise). **No detectable effect.**
+
+Why: the camera head degrades in closed loop. Measured against path labels
+over all 4,776 driver calls, recall within 10 m is 0.56 and the
+dangerous-miss rate is 36% (offline on expert frames: ~0.9 and ~6%). By scene:
+
+- Rear-end scene `17ab62e4` (the lead is a rendered car): the true gap closes
+  16 → 0 m over 4 s while the estimate trails it by 10–20 m (36 → 13 m). The
+  governor engages at 5.2 s and brakes from 9.4 to 5.9 m/s, too late. The
+  head overestimates the gap at close range, which is the unsafe direction.
+- Waiting behind a car at 1.8 m (`20a9fb48`): estimates ~5 m, recall 0.99.
+- Parked-car scenes (`048b974e`, `ad55f513`): the ego's path runs into
+  parked cars at the side; the head (trained on expert driving that never
+  does this) does not report them. A speed governor would not fix these anyway.
+
+Next: a conservative head (pinball loss on a low quantile, so errors fall on
+the "closer" side) and closed-loop training frames (dense SFT collection),
+judged on closed-loop frames by the close-range bias, not only offline recall.
 
 ## Tests
 
