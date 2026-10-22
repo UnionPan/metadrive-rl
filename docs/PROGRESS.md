@@ -650,7 +650,24 @@ The effect is where the mechanism predicts and in the predicted direction,
 but the CI still touches zero on 12 scenes. The parked-car scenes are
 untouched, as expected. A claim needs eval_big. The GRPO-it8 + v1 run was
 stopped after v1 showed exactly zero effect for both always-FOLLOW and SFT.
-Running: SFT + v2 (GPU 1 stack) and GRPO-it8 + v2 (GPU 2 stack).
+
+GRPO-it8 + v2 (11 matched scenes): score +0.000 [−0.136, +0.136], progress
+−0.015. Two rear-end scenes change (`451cbe44`, `d5cc3763`), in opposite
+directions.
+
+SFT + v2, first attempt: **invalid**. 22 of 32 rollouts aborted with CUDA
+out-of-memory in the stack's services on GPU 1. That GPU also hosted the
+GRPO continuation's renderer (29 GB) and this stack's renderer (15 GB). A
+renderer keeps evicted scenes' memory in PyTorch's cache, so it never returns
+to the other processes. Fixes: the renderer now calls `torch.cuda.empty_cache()`
+after evicting, the idle renderer was stopped, and the run was set aside
+(`valcl_sft_gov2_oom_invalid`) and repeated on the GPU 2 stack.
+
+**Confirmatory evaluation on eval_big (96 held-out scenes), running.**
+always-FOLLOW, always-FOLLOW + v2 and SFT + v2, paired with the SFT and
+GRPO-it8 runs on identical scenes. Two `eval_powered.sh` instances share the
+output directory on disjoint batches: batches 0–1 on a single-GPU stack on
+GPU 0, and batches 2–3 on the 4-GPU stack once the SFT/GRPO pass releases it.
 
 ## Tests
 
