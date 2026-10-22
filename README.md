@@ -48,7 +48,11 @@ Closed-loop comparisons so far are underpowered: from paired per-scene differenc
 in score between behaviourally different policies needs ~100 held-out scenes. Details and all
 measurements: [docs/PROGRESS.md](docs/PROGRESS.md).
 
-![rule vs SFT vs GRPO on one scene](reports/demo_d5cc3763_frames.jpg)
+![rule vs SFT vs GRPO on one held-out scene](reports/demo_rule_sft_grpo.gif)
+
+*Front camera rendered by the gsplat renderer in closed loop, with each policy's planned path, on one
+held-out scene under CATK reactive traffic. Single rollouts under stochastic traffic: an illustration
+of the system, not a ranking (the same scene's outcomes flipped between runs).*
 
 ## Repository layout
 

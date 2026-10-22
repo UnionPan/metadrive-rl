@@ -357,7 +357,7 @@ The 16-scene val_cl/test_cl splits can only detect large effects; a final
 comparison needs ~100 held-out scenes with repeated rollouts.
 
 **Demo / noise illustration** (`demos/d5cc3763_rule_sft_grpo.mp4`, not in Git;
-`reports/demo_d5cc3763_frames.jpg`): the one val_cl scene where GRPO-it8 beat
+`reports/demo_rule_sft_grpo.gif`): the one val_cl scene where GRPO-it8 beat
 SFT (both GRPO rollouts passed, SFT 1 of 2, rule 0 of 2) was re-run with one
 rollout per policy for video: now rule passes and SFT and GRPO collide. Single
 rollouts under CATK's stochastic traffic flip outcomes; the video illustrates
