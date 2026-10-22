@@ -17,6 +17,10 @@ Living record of what is done, measured, blocked, and next. Plan and milestones:
 
 Setup: `scripts/setup_alpasim.sh` (clone, pin, patch, build, install plugin).
 
+Artifacts: checkpoints (SFT seed 0, GRPO main it8, AIS encoders), dataset v2 and result tables
+are in the private Hugging Face repo `unionpan/metadrive-rl` (round-trip load verified);
+run directories, videos and logs stay under `runs/` and `demos/` on the training host.
+
 GPU allocation while simulating: GPU 0 AlpaSim physics (Docker), GPU 1 gsplat
 renderer, GPUs 2–3 free for training.
 

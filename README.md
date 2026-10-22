@@ -4,7 +4,9 @@ Mode-conditioned policy post-training (SFT → DPO → GRPO/RLVR → AIS) for cl
 [NVIDIA AlpaSim](https://github.com/NVlabs/alpasim), on 4× Quadro RTX 8000 (Turing, FP16).
 
 The plan and milestones are in [PROJECT_GUIDELINES.md](PROJECT_GUIDELINES.md); measured results,
-bugs found and open issues are logged in [docs/PROGRESS.md](docs/PROGRESS.md).
+bugs found and open issues are logged in [docs/PROGRESS.md](docs/PROGRESS.md). Trained checkpoints
+(SFT, GRPO, AIS encoders), the expert decision dataset and result tables are in a private Hugging
+Face repository, [`unionpan/metadrive-rl`](https://huggingface.co/unionpan/metadrive-rl).
 
 ## How it works
 
