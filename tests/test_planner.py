@@ -92,3 +92,21 @@ def test_follows_curved_route(planner):
     plan = planner.plan(HighLevelAction(Mode.CRUISE, 5.0), 5.0, 0.0, LEFT_CURVE_ROUTE)
     assert plan.xy[-1, 1] > 1.0  # bends left with the route
     assert plan.heading[-1] > 0.2
+
+
+def test_lane_change_completes_under_replanning(planner):
+    """Replanning every step must not stretch the lane change out indefinitely.
+
+    Simulates the closed loop on a straight route: each step the ego moves to
+    the plan's first waypoint and replans from its new lateral offset, passing
+    the distance travelled since the decision.
+    """
+    action = HighLevelAction(Mode.CHANGE_LANE_LEFT, 10.0)
+    x, y, travelled = 0.0, 0.0, 0.0
+    while x < 60.0:
+        route = STRAIGHT_ROUTE - [x, y]
+        plan = planner.plan(action, 10.0, 0.0, route, committed_offset_m=0.0,
+                            transition_elapsed_m=travelled)
+        dx, dy = plan.xy[0]
+        x, y, travelled = x + dx, y + dy, travelled + float(np.hypot(dx, dy))
+    assert y == pytest.approx(3.5, abs=0.1)

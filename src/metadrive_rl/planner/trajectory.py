@@ -161,7 +161,15 @@ class ModeConditionedPlanner:
         accel_mps2: float,
         route_xy: np.ndarray | None,
         committed_offset_m: float = 0.0,
+        transition_elapsed_m: float = 0.0,
     ) -> PlannedTrajectory:
+        """Plan ``action`` from the current ego state.
+
+        ``transition_elapsed_m`` is the distance driven since the decision that
+        set the current lane-offset target. The lateral blend resumes its
+        profile from there, so replanning every cycle completes a lane change
+        in one transition length instead of restarting the blend each call.
+        """
         cfg = self.cfg
         v0 = float(np.clip(speed_mps, 0.0, cfg.max_speed_mps))
         a0 = float(accel_mps2)
@@ -207,8 +215,14 @@ class ModeConditionedPlanner:
         idx = np.arange(sub - 1, n, sub)
         speed, accel, s_rel = vs[idx], as_[idx], ss[idx]
 
-        transition_m = max(cfg.lateral_transition_s * max(v0, v_target), cfg.min_lateral_transition_m)
-        offset = d_ego + (d_target - d_ego) * _smoothstep5(s_rel / transition_m)
+        # Depends only on the action, so it stays fixed while a decision is held.
+        transition_m = max(cfg.lateral_transition_s * v_target, cfg.min_lateral_transition_m)
+        done = _smoothstep5(np.array(transition_elapsed_m / transition_m))
+        if done >= 1.0 - 1e-6:
+            offset = np.full_like(s_rel, d_target)
+        else:
+            ahead = _smoothstep5((transition_elapsed_m + s_rel) / transition_m)
+            offset = d_ego + (d_target - d_ego) * (ahead - done) / (1.0 - done)
         xy, heading = path.sample(s_ego + s_rel, offset)
 
         if not np.all(np.isfinite(xy)):
@@ -227,7 +241,9 @@ class ModeConditionedPlanner:
         accel_mps2: float,
         route_xy: np.ndarray | None,
         committed_offset_m: float = 0.0,
+        transition_elapsed_m: float = 0.0,
     ) -> list[PlannedTrajectory]:
         return [
-            self.plan(a, speed_mps, accel_mps2, route_xy, committed_offset_m) for a in actions
+            self.plan(a, speed_mps, accel_mps2, route_xy, committed_offset_m, transition_elapsed_m)
+            for a in actions
         ]

@@ -74,3 +74,38 @@ def test_session_reset_on_seed_discontinuity():
     model.predict(_inputs(poses, 10, 0))
     rec = _record(model.predict(_inputs(poses, 999, 100_000)))
     assert rec["step"] == 0
+
+
+def test_lane_change_progress_survives_repeated_decisions():
+    """Re-deciding the same lane change must not restart the lateral blend."""
+    model = _model("fixed:CHANGE_LANE_LEFT@10", decision_period_s=0.5)
+    poses = [(0, object())]
+    recs = [_record(model.predict(_inputs(poses, 10 + k, k * 100_000, speed=8.0)))
+            for k in range(12)]
+    assert recs[5]["is_decision"] and recs[10]["is_decision"]
+    assert recs[11]["lateral_elapsed_m"] == pytest.approx(8.0 * 1.1)
+    assert all(r["lane_offset_m"] == pytest.approx(3.5) for r in recs)
+
+
+def _shifted_route_inputs(poses, seed, t_us, lateral_shift):
+    p = _inputs(poses, seed, t_us)
+    p.route.waypoints = [_Vec(w.x, w.y + lateral_shift) for w in p.route.waypoints]
+    return p
+
+
+def test_committed_lane_survives_route_reanchoring():
+    """AlpaSim's MAP route can re-anchor to the ego's current lane mid-episode.
+
+    After a left lane change the ego sits ~3.5 m left of the route; when the
+    route jumps under the ego, the committed offset must follow so the ego
+    keeps its absolute lane instead of changing lanes again.
+    """
+    model = _model("fixed:CHANGE_LANE_LEFT@10", decision_period_s=0.5)
+    poses = [(0, object())]
+    # Ego already moved left: the route lies 3.5 m to the ego's right.
+    for k in range(3):
+        rec = _record(model.predict(_shifted_route_inputs(poses, 10 + k, k * 100_000, -3.5)))
+    assert rec["lane_offset_m"] == pytest.approx(3.5)
+    # Route re-anchors onto the ego's lane.
+    rec = _record(model.predict(_shifted_route_inputs(poses, 13, 300_000, 0.0)))
+    assert rec["lane_offset_m"] == pytest.approx(0.0, abs=0.05)

@@ -29,12 +29,14 @@ from alpasim_driver.models.base import (
 )
 
 from metadrive_rl.planner import ACTIONS, ModeConditionedPlanner, PlannerConfig
+from metadrive_rl.planner.trajectory import RoutePath
 from metadrive_rl.policy.base import Decision, Observation, decide
 from metadrive_rl.policy.spec import PolicySpec, build_policy
 
 logger = logging.getLogger(__name__)
 
 RECORD_KEY = "metadrive"
+REANCHOR_JUMP_M = 1.5
 
 
 @dataclass
@@ -48,6 +50,12 @@ class _SessionState:
     decision: Decision | None = None
     decision_id: str | None = None
     decision_time_us: int = 0
+    # Distance driven since the lane-offset target last changed, integrated
+    # from ego speed; the planner resumes its lateral blend from here.
+    travelled_since_target_m: float = 0.0
+    last_obs_time_us: int | None = None
+    # Ego's lateral offset from the route at the previous call.
+    route_offset_m: float | None = None
     step: int = 0
     history: list = field(default_factory=list)
 
@@ -138,6 +146,8 @@ class MetaDriveModel(BaseTrajectoryModel):
 
     def predict_batch(self, prediction_inputs: list[PredictionInput]) -> list[ModelPrediction]:
         states = [self.sessions.get(p) for p in prediction_inputs]
+        for p, s in zip(prediction_inputs, states, strict=True):
+            self._follow_route_reanchoring(s, _route_xy(p.route))
         observations = [self._observe(p, s) for p, s in zip(prediction_inputs, states, strict=True)]
         due = [i for i, s in enumerate(states) if self._decision_due(s, observations[i])]
         if self.encoder is not None and due:
@@ -147,6 +157,26 @@ class MetaDriveModel(BaseTrajectoryModel):
         return [
             self._step(observations[i], states[i], i in due) for i in range(len(states))
         ]
+
+    def _follow_route_reanchoring(self, state: _SessionState, route_xy: np.ndarray | None) -> None:
+        """Keep the committed lane when the route jumps laterally under the ego.
+
+        AlpaSim's MAP route generator re-anchors the route to the lane the ego
+        occupies, e.g. after a lane change. The ego cannot move laterally by
+        more than ``REANCHOR_JUMP_M`` between calls, so a larger change in its
+        offset from the route means the route moved; shift the committed
+        offsets by the same amount to keep the ego's absolute lane.
+        """
+        if route_xy is None:
+            state.route_offset_m = None
+            return
+        offset = RoutePath(route_xy, self.planner.cfg.path_step_m).project(np.zeros(2))[1]
+        if state.route_offset_m is not None:
+            jump = offset - state.route_offset_m
+            if abs(jump) > REANCHOR_JUMP_M:
+                state.lane_offset_m += jump
+                state.base_offset_m += jump
+        state.route_offset_m = offset
 
     def _observe(self, p: PredictionInput, state: _SessionState) -> Observation:
         # The servicer passes plain (timestamp_us, image) tuples.
@@ -169,21 +199,28 @@ class MetaDriveModel(BaseTrajectoryModel):
         return obs.timestamp_us - state.decision_time_us >= self.spec.decision_period_s * 1e6 - 1
 
     def _step(self, obs: Observation, state: _SessionState, is_decision: bool) -> ModelPrediction:
+        if state.last_obs_time_us is not None:
+            dt_s = max(obs.timestamp_us - state.last_obs_time_us, 0) / 1e6
+            state.travelled_since_target_m += obs.speed_mps * dt_s
+        state.last_obs_time_us = obs.timestamp_us
         if is_decision:
             state.decision = decide(self.policy, obs, state.rng, self.spec.greedy)
             state.decision_id = uuid.uuid4().hex
             state.decision_time_us = obs.timestamp_us
-            state.base_offset_m = state.lane_offset_m
+            target = self.planner.next_lane_offset(state.decision.action, state.lane_offset_m)
+            if target != state.lane_offset_m:
+                state.travelled_since_target_m = 0.0
+            state.base_offset_m, state.lane_offset_m = state.lane_offset_m, target
             if self.feature_dir is not None and obs.features is not None:
                 np.save(self.feature_dir / f"{state.decision_id}.npy", obs.features)
         decision = state.decision
         assert decision is not None
 
         plans = self.planner.plan_all(
-            ACTIONS, obs.speed_mps, obs.accel_mps2, obs.route_xy, state.base_offset_m
+            ACTIONS, obs.speed_mps, obs.accel_mps2, obs.route_xy, state.base_offset_m,
+            state.travelled_since_target_m,
         )
         chosen = plans[decision.action_index]
-        state.lane_offset_m = chosen.lane_offset_target_m
 
         record = {
             RECORD_KEY: {
@@ -198,6 +235,7 @@ class MetaDriveModel(BaseTrajectoryModel):
                 "speed_mps": obs.speed_mps,
                 "command": obs.command,
                 "lane_offset_m": state.lane_offset_m,
+                "lateral_elapsed_m": round(state.travelled_since_target_m, 3),
                 "flags": chosen.flags,
             }
         }
