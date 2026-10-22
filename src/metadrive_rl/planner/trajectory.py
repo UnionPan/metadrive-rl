@@ -7,7 +7,15 @@ jerk- and acceleration-limited speed controller whose target depends on the
 mode. A curvature speed cap keeps lateral acceleration bounded.
 
 The planner sees only deployable inputs (ego speed/acceleration, the route,
-and its own committed lane offset), never simulator ground truth.
+its own committed lane offset, and optionally a *perceived* gap to the lead
+vehicle), never simulator ground truth.
+
+With a lead gap, a speed governor caps every mode except BRAKE at
+``min(sqrt(2 b g), g / T)`` with ``g`` the free gap beyond a standstill
+distance: the speed from which the ego can still stop at decel ``b`` behind a
+lead that stops dead, and a time headway ``T``. Within the horizon the lead is
+assumed stationary (conservative); replanning every cycle with a new gap lets
+the ego follow a moving lead.
 """
 
 from __future__ import annotations
@@ -41,6 +49,11 @@ class PlannerConfig:
     cruise_accel: float = 1.5
     cruise_decel: float = 2.0
     follow_decel: float = 1.0
+    # Lead-gap speed governor (used only when a lead gap is given).
+    time_headway_s: float = 1.5
+    standstill_gap_m: float = 2.0
+    gap_decel: float = 3.0
+    gap_gain: float = 2.0  # 1/s
 
 
 @dataclass
@@ -171,6 +184,7 @@ class ModeConditionedPlanner:
         route_xy: np.ndarray | None,
         committed_offset_m: float = 0.0,
         transition_elapsed_m: float = 0.0,
+        lead_gap_m: float | None = None,
     ) -> PlannedTrajectory:
         """Plan ``action`` from the current ego state.
 
@@ -178,6 +192,7 @@ class ModeConditionedPlanner:
         set the current lane-offset target. The lateral blend resumes its
         profile from there, so replanning every cycle completes a lane change
         in one transition length instead of restarting the blend each call.
+        ``lead_gap_m`` (bumper to bumper, perceived) enables the speed governor.
         """
         cfg = self.cfg
         v0 = float(np.clip(speed_mps, 0.0, cfg.max_speed_mps))
@@ -187,7 +202,8 @@ class ModeConditionedPlanner:
 
         d_target = self.next_lane_offset(action, committed_offset_m)
         v_target, a_max, d_max = self._longitudinal_limits(action, v0)
-        flags = {"speed_capped": False, "fallback": False}
+        flags = {"speed_capped": False, "gap_capped": False, "fallback": False}
+        governed = lead_gap_m is not None and action.mode != Mode.BRAKE
 
         # Curvature speed limit, propagated backwards so the profile starts
         # slowing before a bend rather than inside it.
@@ -201,19 +217,30 @@ class ModeConditionedPlanner:
         sub = 5
         h = cfg.dt_s / sub
         n = self.num_steps * sub
-        v, a, s = v0, float(np.clip(a0, -d_max, max(a_max, 0.0))), 0.0
+        a_min = -cfg.brake_decel if governed else -d_max
+        v, a, s = v0, float(np.clip(a0, a_min, max(a_max, 0.0))), 0.0
         vs, as_, ss = np.empty(n), np.empty(n), np.empty(n)
         for k in range(n):
             v_cap = float(np.interp(s_ego + s, path.s, v_curve))
             v_goal = min(v_target, v_cap, cfg.max_speed_mps)
             if v_cap < v_target and v_cap < v:
                 flags["speed_capped"] = True
+            urgent = action.mode == Mode.BRAKE
             if action.mode == Mode.BRAKE:
                 a_des = -d_max if v > 0 else 0.0
             else:
                 a_des = float(np.clip(cfg.speed_gain * (v_goal - v), -d_max, a_max))
+            if governed:
+                # The governor overrides the mode whenever it asks for less.
+                free = max(lead_gap_m - s - cfg.standstill_gap_m, 0.0)
+                v_gap = min(np.sqrt(2 * cfg.gap_decel * free), free / cfg.time_headway_s)
+                a_gap = float(np.clip(cfg.gap_gain * (v_gap - v), -cfg.brake_decel, a_max))
+                if a_gap < a_des:
+                    a_des = a_gap
+                    flags["gap_capped"] = True
+                    urgent = v_gap < v
             # A hard brake must not be delayed by the jerk limit.
-            jerk = cfg.max_jerk if action.mode != Mode.BRAKE else 4 * cfg.max_jerk
+            jerk = 4 * cfg.max_jerk if urgent else cfg.max_jerk
             a += float(np.clip(a_des - a, -jerk * h, jerk * h))
             v = max(v + a * h, 0.0)
             if v == 0.0:
@@ -251,8 +278,17 @@ class ModeConditionedPlanner:
         route_xy: np.ndarray | None,
         committed_offset_m: float = 0.0,
         transition_elapsed_m: float = 0.0,
+        lead_gap_m: float | None = None,
     ) -> list[PlannedTrajectory]:
         return [
-            self.plan(a, speed_mps, accel_mps2, route_xy, committed_offset_m, transition_elapsed_m)
+            self.plan(
+                a,
+                speed_mps,
+                accel_mps2,
+                route_xy,
+                committed_offset_m,
+                transition_elapsed_m,
+                lead_gap_m,
+            )
             for a in actions
         ]

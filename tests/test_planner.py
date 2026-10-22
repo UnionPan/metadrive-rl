@@ -121,3 +121,39 @@ def test_nonfinite_route_waypoints_are_ignored(planner):
     plan = planner.plan(HighLevelAction(Mode.CRUISE, 10.0), 10.0, 0.0, route)
     assert np.all(np.isfinite(plan.xy)) and not plan.flags["fallback"]
     assert plan.xy[-1, 0] > 30.0
+
+
+@pytest.mark.parametrize("v0,gap", [(5.0, 8.0), (10.0, 20.0), (15.0, 40.0)])
+def test_governor_stops_behind_stationary_lead(planner, v0, gap):
+    for action in ACTIONS:
+        plan = planner.plan(action, v0, 0.0, STRAIGHT_ROUTE, lead_gap_m=gap)
+        travelled = np.linalg.norm(plan.xy[-1])
+        assert travelled < gap, (action.to_text(), travelled)
+        if action.mode != Mode.BRAKE:
+            assert plan.flags["gap_capped"]
+
+
+def test_governor_inactive_without_a_near_lead(planner):
+    for action in ACTIONS:
+        free = planner.plan(action, 12.0, 0.0, STRAIGHT_ROUTE)
+        far = planner.plan(action, 12.0, 0.0, STRAIGHT_ROUTE, lead_gap_m=1000.0)
+        np.testing.assert_allclose(far.xy, free.xy)
+        assert not far.flags["gap_capped"]
+
+
+def test_governor_follows_moving_lead_at_headway(planner):
+    """Replanning every step with the true gap converges to s0 + T * v_lead."""
+    cfg = planner.cfg
+    v_lead, gap, v, a = 8.0, 30.0, 15.0, 0.0
+    min_gap = gap
+    for _ in range(300):
+        plan = planner.plan(
+            HighLevelAction(Mode.CRUISE, 15.0), v, a, STRAIGHT_ROUTE, lead_gap_m=gap
+        )
+        v_next, a = float(plan.speed[0]), float(plan.accel[0])
+        gap += (v_lead - (v + v_next) / 2) * cfg.dt_s
+        v = v_next
+        min_gap = min(min_gap, gap)
+    assert min_gap > 0.5 * cfg.standstill_gap_m
+    assert abs(gap - (cfg.standstill_gap_m + cfg.time_headway_s * v_lead)) < 2.0
+    assert abs(v - v_lead) < 0.5
