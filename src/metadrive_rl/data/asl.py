@@ -34,7 +34,8 @@ class RolloutLog:
     # One MetaDrive record per drive response, in order, plus ``time_us`` (the
     # drive request time). Decision records also carry the planner candidates
     # as returned to the runtime: ``candidates_xy`` (K, T, 2) in the scene frame
-    # and ``candidates_t_us`` (T,).
+    # and ``candidates_t_us`` (T,), plus the route the driver had (``route_xy``,
+    # rig frame).
     decisions: list[dict]
 
     def rig_xy_at(self, t_us: np.ndarray) -> np.ndarray:
@@ -72,11 +73,14 @@ def read_rollout(path: str | Path) -> RolloutLog:
     scene_id = rollout_uuid = ""
     t, xy, yaw, decisions = [], [], [], []
     request_time_us = None
+    route_xy = None
     rig: dict[int, tuple[float, float]] = {}
     for entry in iter_entries(path):
         kind = entry.WhichOneof("log_entry")
         if kind == "driver_request":
             request_time_us = entry.driver_request.time_now_us
+        elif kind == "route_request":
+            route_xy = np.array([(w.x, w.y) for w in entry.route_request.route.waypoints])
         elif kind == "driver_ego_trajectory":
             for p in entry.driver_ego_trajectory.trajectory.poses:
                 rig[p.timestamp_us] = (p.pose.vec.x, p.pose.vec.y)
@@ -104,6 +108,7 @@ def read_rollout(path: str | Path) -> RolloutLog:
                 if record is not None:
                     record["time_us"] = request_time_us
                     if record["is_decision"]:
+                        record["route_xy"] = route_xy
                         cands = entry.driver_return.debug_info.sampled_trajectories
                         record["candidates_xy"] = np.array(
                             [[(p.pose.vec.x, p.pose.vec.y) for p in c.poses] for c in cands]

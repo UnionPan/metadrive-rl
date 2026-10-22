@@ -48,5 +48,5 @@ def build_policy(cfg: dict[str, Any]) -> Policy:
         case "neural":
             from .neural import load_neural_policy
 
-            return load_neural_policy(cfg["checkpoint"])
+            return load_neural_policy(cfg["checkpoint"], cfg.get("temperature", 1.0))
     raise ValueError(f"unknown policy type {cfg['type']!r}")

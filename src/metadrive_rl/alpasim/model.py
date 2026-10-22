@@ -111,6 +111,12 @@ class MetaDriveModel(BaseTrajectoryModel):
         self.planner = ModeConditionedPlanner(
             PlannerConfig(dt_s=1.0 / output_frequency_hz, **spec.planner)
         )
+        # A neural policy was trained on one encoder's features; use the same.
+        trained_encoder = getattr(self.policy, "encoder_name", None)
+        if trained_encoder is not None:
+            if spec.encoder is not None and spec.encoder["name"] != trained_encoder:
+                raise ValueError(f"policy expects encoder {trained_encoder}, spec has {spec.encoder}")
+            spec.encoder = {"name": trained_encoder}
         self.encoder = None
         if spec.encoder is not None:
             from metadrive_rl.perception import build_encoder
