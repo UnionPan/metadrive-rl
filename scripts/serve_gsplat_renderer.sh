@@ -17,5 +17,5 @@ SCENE_GLOB=${SCENE_GLOB:-$HOME/ext/alpasim/data/nre-artifacts/all-usdzs/*.usdz}
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "$RENDER_ENV"
 export CUDA_VISIBLE_DEVICES=$GPU
-exec python -m metadrive_rl.render.server --port "$PORT" \
+exec python -m metadrive_ais.render.server --port "$PORT" \
   --artifact-glob "$SCENE_GLOB" --cache-size "${CACHE_SIZE:-6}"

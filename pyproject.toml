@@ -1,5 +1,5 @@
 [project]
-name = "metadrive-rl"
+name = "metadrive-ais"
 version = "0.1.0"
 description = "AlpaSim / Alpamayo workspace for 4x Quadro RTX 8000 (Turing); gsplat sensorsim renderer"
 readme = "README.md"

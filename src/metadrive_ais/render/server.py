@@ -6,7 +6,7 @@ rendering: version, scene and camera discovery, ego masks (none), and single
 or batched RGB rendering. Lidar and aggregated rendering are not implemented.
 
 Usage:
-    python -m metadrive_rl.render.server --port 46100 \\
+    python -m metadrive_ais.render.server --port 46100 \\
         --artifact-glob '/data/nre-artifacts/all-usdzs/*.usdz'
 """
 
@@ -30,7 +30,7 @@ from alpasim_grpc.v0 import common_pb2, sensorsim_pb2, sensorsim_pb2_grpc
 from PIL import Image
 from scipy.spatial.transform import Rotation
 
-import metadrive_rl
+import metadrive_ais
 
 from .rasterizer import GsplatRenderer, ObjectPose
 from .scene import CameraCalibration, NuRecScene
@@ -204,7 +204,7 @@ class GsplatSensorsim(sensorsim_pb2_grpc.SensorsimServiceServicer):
     # --- RPCs -------------------------------------------------------------
     def get_version(self, request, context):
         return common_pb2.VersionId(
-            version_id=f"metadrive-gsplat-{metadrive_rl.__version__}",
+            version_id=f"metadrive-gsplat-{metadrive_ais.__version__}",
             git_hash="",
             grpc_api_version=API_VERSION_MESSAGE,
         )

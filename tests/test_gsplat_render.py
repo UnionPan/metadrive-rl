@@ -15,9 +15,9 @@ pytestmark = pytest.mark.skipif(not USDZ, reason="METADRIVE_TEST_USDZ not set")
 
 from PIL import Image  # noqa: E402
 
-from metadrive_rl.render.rasterizer import GsplatRenderer  # noqa: E402
-from metadrive_rl.render.scene import NuRecScene  # noqa: E402
-from metadrive_rl.render.validate import compare, psnr, recorded_frame  # noqa: E402
+from metadrive_ais.render.rasterizer import GsplatRenderer  # noqa: E402
+from metadrive_ais.render.scene import NuRecScene  # noqa: E402
+from metadrive_ais.render.validate import compare, psnr, recorded_frame  # noqa: E402
 
 CAMERA = "camera_front_wide_120fov"
 
@@ -59,7 +59,7 @@ def test_pinhole_matches_opencv_and_ftheta(renderer):
     Measured on two val scenes: distortion 43-49 dB (control 20-30 dB),
     pinhole vs f-theta 30-39 dB.
     """
-    from metadrive_rl.render.validate import pinhole_consistency
+    from metadrive_ais.render.validate import pinhole_consistency
 
     stats = pinhole_consistency(renderer)
     print(stats)

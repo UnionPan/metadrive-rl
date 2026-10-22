@@ -1,6 +1,6 @@
-# metadrive-rl
+# MetaDrive-AIS
 
-Workspace for autonomous-driving experiments with NVIDIA's Alpamayo models in
+Workspace (GitHub repo `metadrive-rl`) for autonomous-driving experiments with NVIDIA's Alpamayo models in
 the AlpaSim closed-loop simulator, on 4× Quadro RTX 8000 (Turing, sm_75,
 48 GB each).
 
@@ -33,7 +33,7 @@ DRIVER_GPU=2,3 ALPASIM_STACK_GPU=1 ALPAMAYO_DTYPE=float16 ALPAMAYO_DEVICE_MAP=la
 
 ## What is here
 
-- `src/metadrive_rl/render/`: a gsplat 3DGUT reimplementation of AlpaSim's
+- `src/metadrive_ais/render/`: a gsplat 3DGUT reimplementation of AlpaSim's
   sensorsim service. NVIDIA's NRE renderer ships no Turing kernels, so AlpaSim
   renders NuRec scenes on this hardware through this server (f-theta cameras,
   rolling shutter, dynamic actors).

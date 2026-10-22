@@ -3,7 +3,7 @@
 Each scene ships one recorded photo per camera with its rig poses, which gives
 a ground-truth check of geometry, camera model and actor placement.
 
-Usage: python -m metadrive_rl.render.validate <usdz>... [--out DIR]
+Usage: python -m metadrive_ais.render.validate <usdz>... [--out DIR]
 """
 
 from __future__ import annotations

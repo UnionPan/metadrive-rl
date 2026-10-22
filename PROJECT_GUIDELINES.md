@@ -201,7 +201,7 @@ uv run alpasim_wizard deploy=local topology=1gpu driver=vavam \
 
 **`larx` procedure** (same pattern as the verified Alpamayo runs, §8.1):
 
-1. Add OpenCV-pinhole cameras with radial/tangential distortion to the gsplat sensorsim (`src/metadrive_rl/render/`; gsplat 1.5.3 already supports `camera_model="pinhole"` with `radial_coeffs`/`tangential_coeffs`). Validate them: geometric consistency with the f-theta render of the same view, and photometric statistics.
+1. Add OpenCV-pinhole cameras with radial/tangential distortion to the gsplat sensorsim (`src/metadrive_ais/render/`; gsplat 1.5.3 already supports `camera_model="pinhole"` with `radial_coeffs`/`tangential_coeffs`). Validate them: geometric consistency with the f-theta render of the same view, and photometric statistics.
 2. Add a host driver config `configs/driver/vavam.yaml` (local asset paths) and an external-renderer preset carrying the VaVAM camera and 2 Hz timing from `vavam_configs.yaml`.
 3. Run `scripts/run_alpasim.sh` with the gsplat renderer, as for Alpamayo.
 4. Record two baselines: **B0a** (stock preset, `context_length=1`) and **B0b** (native 8-frame context).
@@ -385,7 +385,7 @@ No fake videos and no screenshots of unrelated driving. For human-readable demos
 ### 8.1 Verified `larx` facts (22 October 2026)
 
 **Rendering.**
-- NVIDIA's NRE sensorsim has no sm_75 kernels. AlpaSim renders on `larx` only through the in-repo **gsplat 3DGUT sensorsim** (`src/metadrive_rl/render/`, `scripts/serve_gsplat_renderer.sh`), as an external renderer (`configs/alpasim/driver_source/`, `scripts/run_alpasim.sh`).
+- NVIDIA's NRE sensorsim has no sm_75 kernels. AlpaSim renders on `larx` only through the in-repo **gsplat 3DGUT sensorsim** (`src/metadrive_ais/render/`, `scripts/serve_gsplat_renderer.sh`), as an external renderer (`configs/alpasim/driver_source/`, `scripts/run_alpasim.sh`).
 - It supports **f-theta cameras only** (all four Alpamayo cameras verified). Pinhole cameras, which VaVAM needs, are not yet implemented.
 - Fidelity against each scene's recorded photo: median ~18 dB PSNR over 24 scenes. There is no camera response model and the sky is flat, so geometry matches but colour does not. Renders degrade once the ego is ~70–85 m from the recorded path.
 - Pedestrians, riders and strollers are never rendered, nor are moving vehicle tracks without dynamic Gaussians (140 of 1,388 in 12 scenes). Parked vehicles are part of the static background.
@@ -482,7 +482,7 @@ metadrive-ais/
 │   └── alpagym/
 ├── patches/alpasim/                   # small, tested AlpaSim patches (applied by scripts/setup_alpasim.sh)
 ├── src/metadrive_ais/
-│   ├── render/                          # gsplat sensorsim for Turing (exists today as src/metadrive_rl/render)
+│   ├── render/                          # gsplat sensorsim for Turing
 │   ├── data/                            # synchronized rollouts/datasets
 │   ├── vision/                          # DINO transforms + cache
 │   ├── memory/                          # GRU, prediction heads, latent modes
