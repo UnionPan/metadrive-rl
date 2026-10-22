@@ -1,9 +1,7 @@
 # @package _global_
-# MetaDrive driver on this host plus an NRE renderer on a remote GPU machine.
-#
-# NRE ships kernels for Ampere and newer only, so on Turing hosts the renderer
-# runs elsewhere (scripts/serve_renderer.sh) and is forwarded to this host,
-# typically through an SSH tunnel. Its address comes from the environment:
+# MetaDrive driver on this host plus an externally launched renderer, by
+# default the gsplat renderer (scripts/serve_gsplat_renderer.sh), which runs
+# on Turing GPUs where NVIDIA's NRE has no kernels. Address from the environment:
 #   METADRIVE_RENDERER_ADDR=localhost:46100
 # Requires host networking: wizard.debug_flags.use_localhost=True.
 

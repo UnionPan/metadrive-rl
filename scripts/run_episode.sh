@@ -2,13 +2,13 @@
 # Run closed-loop AlpaSim rollouts with the MetaDrive driver.
 #
 # Starts the MetaDrive driver on this host, then lets the AlpaSim wizard launch
-# physics/controller/runtime in Docker against a remote NRE renderer
-# (see scripts/serve_renderer.sh).
+# physics/controller/runtime in Docker against an external renderer
+# (see scripts/serve_gsplat_renderer.sh).
 #
 # Usage: scripts/run_episode.sh <log-dir> [policy-spec] [extra wizard overrides...]
 #   policy-spec  rule (default), fixed:<ACTION>, or a policy YAML path
 # Env:  ALPASIM_DIR (default ~/ext/alpasim)
-#       DRIVER_SOURCE (metadrive_remote_renderer | metadrive_no_render)
+#       DRIVER_SOURCE (metadrive_external_renderer | metadrive_no_render)
 #       METADRIVE_RENDERER_ADDR (default localhost:46100)
 set -euo pipefail
 
@@ -36,5 +36,5 @@ done
 
 cd "$ALPASIM_DIR"
 uv run alpasim_wizard deploy=local topology=1gpu driver=metadrive \
-  driver_source="${DRIVER_SOURCE:-metadrive_remote_renderer}" wizard.debug_flags.use_localhost=True \
+  driver_source="${DRIVER_SOURCE:-metadrive_external_renderer}" wizard.debug_flags.use_localhost=True \
   wizard.log_dir="$LOG_DIR/sim" "$@"
