@@ -462,7 +462,11 @@ always-FOLLOW, SFT and GRPO-it8 are `collision_front` (2 lateral, rule only):
 the ego drives into the car ahead. The cause is structural: no input carries
 the distance to a lead vehicle, and FOLLOW holds the current speed. Neither
 imitation nor GRPO can learn to keep a gap they cannot observe. The demo GIF
-shows the same thing.
+shows the same thing. The actor directly ahead at contact is always a car.
+In 30 of the 38 cases the renderer draws that car. In 8 (2 per policy) it is
+a moving car track with no Gaussians, which is invisible to the camera, so
+no camera policy can avoid it: the evaluation has a small floor of
+unavoidable collisions.
 
 **Labels.** `metadrive_rl.data.lead_gap`: bumper-to-bumper gap to the nearest
 actor ahead within a ±1.6 m corridor, from logged actor poses and the scene's
