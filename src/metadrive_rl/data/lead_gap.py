@@ -1,9 +1,12 @@
 """Lead-vehicle gap labels from rollout logs (privileged; for training only).
 
-At every logged frame, other actors are expressed in the ego box frame; the
-lead vehicle is the nearest one ahead whose centre lies within a lane-wide
-corridor. The gap is bumper to bumper: centre distance minus both
-half-lengths (actor lengths from the scene's cuboid tracks). These labels
+At every logged frame, the corridor is the path the ego actually drives next
+(from the same log; extended straight past its end), so curves and lane
+changes are followed and cars parked along a bend are not mistaken for a
+lead. The lead vehicle is the nearest actor whose centre lies within a
+lane-wide band around that path. The gap is bumper to bumper: arc length
+along the path minus both half-lengths (actor lengths from the scene's cuboid
+tracks). These labels
 supervise a perception head; the policy never receives them as inputs.
 
 Only actors the camera can show count. NuRec reconstructs vehicles only:
@@ -31,6 +34,8 @@ VEHICLE_CLASSES = frozenset(
 )
 # A track whose position spans less than this is parked: background, not dynamic.
 STATIC_TRACK_M = 2.0
+PATH_STEP_M = 0.5
+PATH_LENGTH_M = 80.0
 
 
 def visible_tracks(tracks_data: dict, rendered_spans: set[tuple[int, int]]) -> set[str]:
@@ -81,33 +86,68 @@ def _yaw(q) -> float:
     return float(np.arctan2(2 * (q.w * q.z + q.x * q.y), 1 - 2 * (q.y * q.y + q.z * q.z)))
 
 
+def future_path(xy: np.ndarray, yaw_end: float, length_m: float = PATH_LENGTH_M) -> np.ndarray:
+    """Points every ``PATH_STEP_M`` along the polyline ``xy`` from ``xy[0]``,
+    continued straight along ``yaw_end`` past its end."""
+    keep = np.concatenate([[True], np.linalg.norm(np.diff(xy, axis=0), axis=1) > 1e-3])
+    xy = xy[keep]
+    s = np.concatenate([[0.0], np.cumsum(np.linalg.norm(np.diff(xy, axis=0), axis=1))])
+    grid = np.arange(0.0, length_m + PATH_STEP_M / 2, PATH_STEP_M)
+    inside = grid <= s[-1]
+    pts = np.empty((len(grid), 2))
+    pts[inside] = np.stack([np.interp(grid[inside], s, xy[:, i]) for i in range(2)], axis=1)
+    beyond = (grid[~inside] - s[-1])[:, None]
+    pts[~inside] = xy[-1] + beyond * np.array([np.cos(yaw_end), np.sin(yaw_end)])
+    return pts
+
+
+def path_gap(
+    path: np.ndarray,
+    actors: list[tuple[str, float, float]],
+    half_lengths: dict[str, float],
+    ego_half_length: float = 2.6,
+) -> float:
+    """Bumper gap to the nearest visible actor within the band around ``path``."""
+    gap = NO_LEAD_M
+    for actor_id, x, y in actors:
+        if actor_id not in half_lengths:
+            continue
+        d = np.hypot(path[:, 0] - x, path[:, 1] - y)
+        i = int(np.argmin(d))
+        if i == 0 or d[i] >= CORRIDOR_HALF_WIDTH_M:
+            continue  # beside or behind the ego, or off the path
+        g = i * PATH_STEP_M - ego_half_length - half_lengths[actor_id]
+        gap = min(gap, max(g, 0.0))
+    return gap
+
+
 def lead_gaps(asl: str | Path, half_lengths: dict[str, float], ego_half_length: float = 2.6):
     """(timestamps_us, gap_m) for every logged frame; NO_LEAD_M when nothing is ahead.
 
     Only actors in ``half_lengths`` (the visible ones) can be a lead.
     """
-    ts, gaps = [], []
+    ts, ego, others = [], [], []
     for e in iter_entries(asl):
         if e.WhichOneof("log_entry") != "actor_poses":
             continue
         actors = e.actor_poses.actor_poses
-        ego = next((a for a in actors if a.actor_id == "EGO"), None)
-        if ego is None:
+        me = next((a for a in actors if a.actor_id == "EGO"), None)
+        if me is None:
             continue
-        yaw = _yaw(ego.actor_pose.quat)
-        c, s = np.cos(yaw), np.sin(yaw)
-        ex, ey = ego.actor_pose.vec.x, ego.actor_pose.vec.y
-        gap = NO_LEAD_M
-        for a in actors:
-            if a.actor_id not in half_lengths:
-                continue
-            dx, dy = a.actor_pose.vec.x - ex, a.actor_pose.vec.y - ey
-            fwd, lat = c * dx + s * dy, -s * dx + c * dy
-            if fwd > 0 and abs(lat) < CORRIDOR_HALF_WIDTH_M:
-                g = fwd - ego_half_length - half_lengths[a.actor_id]
-                gap = min(gap, max(g, 0.0))
         ts.append(e.actor_poses.timestamp_us)
-        gaps.append(gap)
+        ego.append((me.actor_pose.vec.x, me.actor_pose.vec.y, _yaw(me.actor_pose.quat)))
+        others.append(
+            [
+                (a.actor_id, a.actor_pose.vec.x, a.actor_pose.vec.y)
+                for a in actors
+                if a.actor_id != "EGO"
+            ]
+        )
+    ego = np.asarray(ego).reshape(-1, 3)
+    gaps = [
+        path_gap(future_path(ego[k:, :2], ego[-1, 2]), others[k], half_lengths, ego_half_length)
+        for k in range(len(ts))
+    ]
     return np.asarray(ts, dtype=np.int64), np.asarray(gaps)
 
 

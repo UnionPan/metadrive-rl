@@ -82,3 +82,16 @@ def test_visible_tracks_keep_only_vehicles_the_renderer_draws():
     }
     # "car" has dynamic Gaussians over its span; "ghost" moves but has none.
     assert visible_tracks(tracks, {(0, 10)}) == {"car", "parked"}
+
+
+def test_path_gap_follows_the_driven_curve():
+    from metadrive_rl.data.lead_gap import NO_LEAD_M, future_path, path_gap
+
+    # Ego drives a left quarter circle of radius 30 m.
+    th = np.linspace(0, np.pi / 2, 60)
+    path = future_path(np.stack([30 * np.sin(th), 30 * (1 - np.cos(th))], 1), np.pi / 2)
+    on_curve = ("car", 30 * np.sin(0.6), 30 * (1 - np.cos(0.6)))  # 18 m along the arc
+    straight_ahead = ("parked", 18.0, 0.0)  # in a straight corridor, off the curve
+    half = {"car": 2.0, "parked": 2.0}
+    assert abs(path_gap(path, [on_curve], half) - (30 * 0.6 - 2.6 - 2.0)) < 0.6
+    assert path_gap(path, [straight_ahead], half) == NO_LEAD_M
