@@ -485,12 +485,40 @@ too high to brake on, and the expert data contains few close-lead frames.
 
 **Dense perception data** (`scripts/collect_dense.sh`,
 `metadrive_rl.data.build_gap_dataset`): one camera frame per 0.1 s step
-(`image_every_step`) over the 68 train+val scenes, from (a) expert force-GT
-replays and (b) SFT driving in closed loop under CATK. Closed-loop driving
-reaches the close-lead and near-collision states the governor must recognise.
-The expert run is collecting, on its own stack (driver 6792, renderer 46120
-on GPU 2). A first check of the builder on 3 scenes gave 597 frames, 14% with a
-lead under 10 m.
+(`image_every_step`) over the train+val scenes, from (a) expert force-GT
+replays (done: 66 scenes, 13,134 frames; 2 scenes fail AlpaSim's route sanity
+check) and (b) SFT driving in closed loop under CATK (collecting). Closed-loop
+driving reaches the close-lead and near-collision states the governor must
+recognise.
+
+Denser frames alone barely helped. On the 4 unseen val scenes the dense-expert
+heads score about like the 2 Hz heads (dangerous miss ~24% for both; recall
+within 10 m 0.72 vs 0.68): consecutive frames of a scene are near-duplicates.
+
+**Most of the remaining "misses" were label errors.** Every dangerous miss on
+the val scenes came from one scene where the ego waits at a crossing and the
+"lead" 2–6 m ahead is a pedestrian. NuRec renders no pedestrians (0 of 604
+tracks in 12 scenes), riders (0/35) or strollers, nor moving vehicle tracks
+without dynamic Gaussians (140 of 1,388 vehicle tracks). Parked vehicles are
+part of the static background and do appear. The labels now count only
+vehicles the renderer draws (`visible_tracks`): 2.5% of train labels and 18%
+of val labels change.
+
+| gap head (DINOv2-base grid, 1 frame; visible-vehicle labels) | data | recall < 10 m | dangerous miss | false alarm |
+|---|---|---|---|---|
+| 4 unseen val scenes, 2 Hz expert heads (3 seeds) | expert_v2 | 0.88–0.93 | 0 | 0 |
+| 4 unseen val scenes, dense expert heads (3 seeds) | gap_dense_expert | 0.93–0.96 | 0 | 0 |
+| 12 held-out scenes (8 train held out + 4 val) | gap_dense_expert | 0.892 ± 0.007 | 0.065 ± 0.001 | 0.001 |
+
+(false alarm: predicted < 10 m when the true gap is ≥ 30 m.)
+
+The governor's main risk is now phantom engagement, not missed leads. On the
+12 held-out scenes, frame by frame: the true gap would engage the governor on
+5.3% of frames; the predicted gap engages it on 12%. Phantoms make up 7–8% of
+frames, with a mean speed cap 7 m/s below the current speed; misses are 0.6%.
+The head places a lead at 20–45 m when none exists. With
+`governor_range_m = 25` (estimates beyond 25 m count as no lead), phantoms
+fall to 3–5% and close-lead misses stay at 0.6–0.7%.
 
 **Speed governor** (`planner/trajectory.py`, `PolicySpec.gap_head`): given a
 perceived gap, every mode except BRAKE is capped at
@@ -507,6 +535,13 @@ logs.
 This is a hand-designed prior, so the evaluation must separate it from the
 learned policy: each policy with and without the governor, plus
 always-FOLLOW + governor, on matched scenes.
+
+**Ablation (running):** always-FOLLOW, SFT and GRPO-it8, each with the
+governor (gap head `gap_dense_expert_vis_grid_s0`, seed 0 chosen in advance;
+range 25 m), on val_cl with 2 rollouts, on a single-GPU stack (GPU 1). The
+no-governor runs are the existing val_cl evaluations; compare on matched
+scenes. A grid encoder's output begins with the pooled features, so the
+policies get exactly their training features from the same forward pass.
 
 ## Tests
 
