@@ -56,3 +56,14 @@ def test_gap_at_uses_latest_frame_not_after_query():
     assert gap_at(ts, gaps, 150_000) == 20.0
     assert gap_at(ts, gaps, 200_000) == 10.0
     assert gap_at(ts, gaps, -5) == 30.0
+
+
+def test_gap_metrics_separate_misses_from_false_alarms():
+    from metadrive_rl.evaluation.gap_error import gap_metrics
+
+    true = np.array([5.0, 5.0, 50.0, 50.0])
+    pred = np.array([6.0, 40.0, 50.0, 8.0])
+    m = gap_metrics(pred, true)
+    assert m["recall_lead_within_10m"] == 0.5
+    assert m["dangerous_miss_rate"] == 0.5
+    assert m["false_alarm_rate"] == 0.5

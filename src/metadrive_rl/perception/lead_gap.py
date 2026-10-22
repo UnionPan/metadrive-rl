@@ -85,13 +85,9 @@ def _splits(
 def metrics(head: GapHead, d: dict) -> dict:
     head.eval()
     p, y = head(d["x"], d["v"]), d["y"]
-    close, near = y < 10.0, y < 30.0
-    return {
-        "mae_m": float((p - y).abs().mean()),
-        "mae_lead_within_30m": float((p - y)[near].abs().mean()) if near.any() else None,
-        "recall_lead_within_10m": float((p[close] < 10.0).float().mean()) if close.any() else None,
-        "dangerous_miss_rate": float((p[close] > 20.0).float().mean()) if close.any() else None,
-    }
+    from metadrive_rl.evaluation.gap_error import gap_metrics
+
+    return gap_metrics(p.cpu().numpy(), y.cpu().numpy())
 
 
 def main() -> None:
