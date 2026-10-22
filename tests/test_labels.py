@@ -46,3 +46,13 @@ def test_decisions_without_a_full_future_are_dropped():
     # Plans span 4 s, so decisions after t = 6 s have no complete future.
     assert max(d.time_us for d in labeled) <= 6_000_000
     assert len(labeled) == 13
+
+
+def test_gap_at_uses_latest_frame_not_after_query():
+    from metadrive_rl.data.lead_gap import gap_at
+
+    ts = np.array([0, 100_000, 200_000])
+    gaps = np.array([30.0, 20.0, 10.0])
+    assert gap_at(ts, gaps, 150_000) == 20.0
+    assert gap_at(ts, gaps, 200_000) == 10.0
+    assert gap_at(ts, gaps, -5) == 30.0
