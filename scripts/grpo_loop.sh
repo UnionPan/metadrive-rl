@@ -7,7 +7,9 @@
 # writes the next checkpoint. Wall time and rollouts are logged per iteration.
 #
 # Usage: scripts/grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]
-# Env:   TEMPERATURE (1.0), KL_COEF (0.05), PROGRESS_WEIGHT (0.2), SPLIT (train)
+# Env:   TEMPERATURE (1.0), KL_COEF (0.05), PROGRESS_WEIGHT (0.2), SPLIT (train),
+#        SPLITS (splits file, e.g. a training subset), STEPS (sim steps per episode, 200),
+#        TOPOLOGY / METADRIVE_RENDERER_ADDRS (see run_episode.sh)
 set -euo pipefail
 
 SFT=$(realpath "${1:?usage: grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]}")
@@ -29,7 +31,9 @@ decision_period_s: 0.5
 feature_dir: $dir/features
 YAML
   start=$(date +%s)
-  "$HERE/evaluate.sh" "$dir/policy.yaml" "${SPLIT:-train}" "$dir/rollouts" "$GROUP" > "$dir/collect.log" 2>&1
+  "$HERE/evaluate.sh" "$dir/policy.yaml" "${SPLIT:-train}" "$dir/rollouts" "$GROUP" \
+    eval.video.render_video=False runtime.simulation_config.n_sim_steps="${STEPS:-200}" \
+    > "$dir/collect.log" 2>&1
   collected=$(date +%s)
   "$PY" -m metadrive_rl.training.grpo build "$dir/rollouts" "$dir/batch" \
     --features "$dir/features" --progress-weight "${PROGRESS_WEIGHT:-0.2}" > "$dir/build.json"
