@@ -1,0 +1,97 @@
+diff --git a/src/driver/src/alpasim_driver/models/alpamayo1_model.py b/src/driver/src/alpasim_driver/models/alpamayo1_model.py
+index 3a15fea..ee64bfd 100644
+--- a/src/driver/src/alpasim_driver/models/alpamayo1_model.py
++++ b/src/driver/src/alpasim_driver/models/alpamayo1_model.py
+@@ -64,7 +64,13 @@ class Alpamayo1Model(AlpamayoBaseModel):
+             configure_deterministic_runtime()
+         logger.info("Loading Alpamayo 1 checkpoint from %s", checkpoint_path)
+ 
+-        model = AlpamayoR1.from_pretrained(checkpoint_path, dtype=self.DTYPE).to(device)
++        # SDPA as for Alpamayo 1.5: the checkpoint asks for FlashAttention 2,
++        # which is optional and has no pre-Ampere kernels.
++        config = AlpamayoR1.config_class.from_pretrained(checkpoint_path)
++        config.attn_implementation = "sdpa"
++        model = AlpamayoR1.from_pretrained(checkpoint_path, config=config, dtype=self.DTYPE).to(
++            device
++        )
+         processor = helper.get_processor(model.tokenizer)
+ 
+         self._init_common(
+diff --git a/src/driver/src/alpasim_driver/models/alpamayo2_model.py b/src/driver/src/alpasim_driver/models/alpamayo2_model.py
+index c893b16..8b1a830 100644
+--- a/src/driver/src/alpasim_driver/models/alpamayo2_model.py
++++ b/src/driver/src/alpasim_driver/models/alpamayo2_model.py
+@@ -49,10 +49,39 @@ from .trajectory_selection import (
+ logger = logging.getLogger(__name__)
+ 
+ 
++def _layer_split_device_map(n_gpus: int, n_layers: int = 64) -> dict[str, int]:
++    """Split the VLM and the trajectory expert at the same layer indices.
++
++    The expert's layer ``i`` attends to the KV cache written by VLM layer ``i``,
++    so both must share a GPU; a generic balanced map splits them differently and
++    the denoising step fails on cross-device tensors.
++    """
++    per_gpu = -(-n_layers // n_gpus)
++    last = n_gpus - 1
++    device_map: dict[str, int] = {
++        "vlm.model.visual": 0,
++        "vlm.model.language_model.embed_tokens": 0,
++        # Weightless modules (rotary inv_freq buffers) would otherwise stay on CPU.
++        "vlm.model.language_model.rotary_emb": 0,
++        "expert.expert.rotary_emb": 0,
++        "vlm.model.language_model.norm": last,
++        "vlm.lm_head": last,
++        "expert.action_in_proj": 0,
++        "expert.action_space": 0,
++        # The denoising loop adds the expert's output to noise created on GPU 0.
++        "expert.expert.norm": 0,
++        "expert.action_out_proj": 0,
++    }
++    for i in range(n_layers):
++        device_map[f"vlm.model.language_model.layers.{i}"] = i // per_gpu
++        device_map[f"expert.expert.layers.{i}"] = i // per_gpu
++    return device_map
++
++
+ class Alpamayo2Model(BaseTrajectoryModel):
+     """Alpamayo 2 Super wrapper implementing the common interface."""
+ 
+-    DTYPE: torch.dtype = torch.bfloat16
++    DTYPE: torch.dtype = getattr(torch, os.environ.get("ALPAMAYO_DTYPE", "bfloat16"))
+     NUM_HISTORY_STEPS: int = 16
+     HISTORY_TIME_STEP: float = 0.1
+     DEFAULT_CONTEXT_LENGTH: int = 4
+@@ -199,10 +228,15 @@ class Alpamayo2Model(BaseTrajectoryModel):
+         load_kwargs: dict = {}
+         if os.path.isdir(os.path.expanduser(checkpoint_path)):
+             load_kwargs["local_files_only"] = True
++        # ALPAMAYO_DEVICE_MAP=layer-split spreads the 36B model over all visible
++        # GPUs when one card cannot hold it (e.g. 2x 48 GB); inputs stay on `device`.
++        device_map: str | dict = os.environ.get("ALPAMAYO_DEVICE_MAP", str(device))
++        if device_map == "layer-split":
++            device_map = _layer_split_device_map(torch.cuda.device_count())
+         self._model = Alpamayo2Super.from_pretrained(
+             checkpoint_path,
+             dtype=self.DTYPE,
+-            device_map=str(device),
++            device_map=device_map,
+             **load_kwargs,
+         )
+         self._model.eval()
+diff --git a/src/driver/src/alpasim_driver/models/alpamayo_base.py b/src/driver/src/alpasim_driver/models/alpamayo_base.py
+index 2bcaa47..5b9829c 100644
+--- a/src/driver/src/alpasim_driver/models/alpamayo_base.py
++++ b/src/driver/src/alpasim_driver/models/alpamayo_base.py
+@@ -350,8 +350,9 @@ class AlpamayoBaseModel(BaseTrajectoryModel):
+     :meth:`_init_common`.
+     """
+ 
+-    # Alpamayo uses bfloat16 for inference
+-    DTYPE: torch.dtype = torch.bfloat16
++    # Alpamayo uses bfloat16 for inference. GPUs without native bf16 (pre-Ampere,
++    # where bf16 is emulated and ~10x slower) can set ALPAMAYO_DTYPE=float16.
++    DTYPE: torch.dtype = getattr(torch, os.environ.get("ALPAMAYO_DTYPE", "bfloat16"))
+     # Number of historical frames for ego trajectory
+     NUM_HISTORY_STEPS: int = 16
+     # Time step between history frames (seconds)

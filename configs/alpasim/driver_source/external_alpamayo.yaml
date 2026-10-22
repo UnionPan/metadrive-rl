@@ -1,0 +1,26 @@
+# @package _global_
+# Driver on this host plus an externally launched renderer (the gsplat
+# sensorsim server, scripts/serve_gsplat_renderer.sh; NVIDIA's NRE has no
+# Turing kernels). Renders the four cameras Alpamayo 1 / 1.5 / 2 consume, at
+# 576x328: their processors resize every image to 164k-197k pixels anyway.
+# Addresses from the environment:
+#   ALPASIM_DRIVER_PORT (default 6789)
+#   ALPASIM_RENDERER_ADDRS YAML list, e.g. '[localhost:46100,localhost:46101]'
+# Requires host networking: wizard.debug_flags.use_localhost=True.
+
+wizard:
+  run_sim_services: ["physics", "trafficsim", "controller", "runtime"]
+  external_services:
+    driver: ["localhost:${oc.env:ALPASIM_DRIVER_PORT,6789}"]
+    renderer: ${oc.decode:${oc.env:ALPASIM_RENDERER_ADDRS,'[localhost:46100]'}}
+
+runtime:
+  endpoints:
+    driver:
+      skip: false
+  simulation_config:
+    cameras:
+      - {logical_id: camera_front_wide_120fov, height: 328, width: 576, frame_interval_us: 100_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_front_tele_30fov, height: 328, width: 576, frame_interval_us: 100_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_cross_left_120fov, height: 328, width: 576, frame_interval_us: 100_000, shutter_duration_us: 30_000}
+      - {logical_id: camera_cross_right_120fov, height: 328, width: 576, frame_interval_us: 100_000, shutter_duration_us: 30_000}

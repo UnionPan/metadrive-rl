@@ -62,7 +62,12 @@ def main() -> None:
     history_xyz = torch.tensor(np.stack([steps, 0 * steps, 0 * steps], -1))[None, None]
     history_rot = torch.eye(3).expand(1, 1, 16, 3, 3).clone()
 
-    messages = helper.create_message(image_frames.flatten(0, 1))
+    if args.model == "alpamayo1":
+        messages = helper.create_message(image_frames.flatten(0, 1))
+    else:  # cross-left, front-wide, cross-right, front-tele in AlpaSim's index order
+        messages = helper.create_message(
+            image_frames.flatten(0, 1), torch.tensor([0, 1, 2, 6]), num_frames_per_camera=4
+        )
     inputs = processor.apply_chat_template(
         messages,
         tokenize=True,

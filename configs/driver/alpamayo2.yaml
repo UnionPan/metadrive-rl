@@ -1,0 +1,34 @@
+# Alpamayo 2 Super (nvidia/Alpamayo2-Super, 36B) as an AlpaSim driver on this host
+# (python -m alpasim_driver.main --config-path configs/driver --config-name alpamayo2).
+# Mirrors AlpaSim's wizard driver config. On Turing set ALPAMAYO_DTYPE=float16
+# (patches/alpasim/0003); bf16 is emulated there and ~13x slower. The 36B model
+# needs two 48 GB cards: ALPAMAYO_DEVICE_MAP=auto with CUDA_VISIBLE_DEVICES=a,b.
+# Navigation is language-based, not waypoint commands.
+log_level: INFO
+model:
+  model_type: alpamayo2
+  checkpoint_path: nvidia/Alpamayo2-Super
+  device: cuda
+  image_decode_device: cuda
+  num_trajectory_samples: 1
+  trajectory_selection:
+    strategy: ALWAYS_FIRST
+    max_num_distance_points: 64
+    skip_first_n_distance_points: 0
+host: "0.0.0.0"
+port: 6789
+inference:
+  use_cameras:
+    - camera_cross_left_120fov
+    - camera_front_wide_120fov
+    - camera_cross_right_120fov
+    - camera_front_tele_30fov
+  max_batch_size: 1
+  subsample_factor: 1
+  context_length: 4
+route:
+  use_waypoint_commands: false
+output_dir: ./runs/driver
+trajectory_optimizer:
+  enabled: false
+plot_debug_images: false
