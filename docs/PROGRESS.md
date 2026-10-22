@@ -395,6 +395,23 @@ Paired GRPO-it8 − SFT over the same 11 scenes: +0.045 [+0.000, +0.136]
 (bootstrap over scenes) — driven by a single scene that improved; 10 scenes
 scored identically. Not a claim.
 
+**Powered comparison on eval_big** (96 held-out scenes, disjoint from every
+other split; 2 rollouts each, CATK; `reports/eval_big_sft_grpo.md`). About
+25% of rollouts end in CATK simulator aborts (49 SFT, 51 GRPO of 192), which
+are excluded, leaving 70 scenes matched:
+
+| run | score | pass rate | at-fault collision | progress |
+|---|---|---|---|---|
+| SFT | 0.352 [0.252, 0.456] | 0.443 | 0.557 | 0.581 |
+| GRPO-it8 | 0.344 [0.247, 0.446] | 0.429 | 0.571 | 0.606 |
+
+Paired GRPO-it8 − SFT: score **−0.008 [−0.052, +0.035]** (21 of 70 scenes
+differ), at-fault collision +0.014 [−0.043, +0.071], progress +0.025
+[−0.001, +0.054]. **GRPO-it8 does not improve on SFT**; any score effect is
+within ±0.05. The suggestive +0.045 on val_cl was noise. GRPO bought a little
+more progress, not more safety, consistent with the policy having no input
+that could avoid the dominant (rear-end) failure.
+
 **Statistical power of the closed-loop evaluation.** From paired per-scene
 score differences on val_cl: policies that behave alike (SFT vs always-FOLLOW:
 paired SD 0.043) are resolved by a few scenes, but behaviourally different
