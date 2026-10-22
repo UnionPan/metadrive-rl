@@ -69,6 +69,7 @@ EOF
     if [[ -n "$(find "$OUT/$label/b$b" -path '*/aggregate/results-summary.json' 2>/dev/null)" ]]; then
       echo "$label b$b: done"; continue
     fi
+    mkdir -p "$OUT/$label"
     SPLITS=$bdir/splits.yaml "$HERE/evaluate.sh" "$policy" batch "$OUT/$label/b$b" \
       "${ROLLOUTS:-2}" eval.video.render_video=False > "$OUT/$label/b$b.log" 2>&1
     echo "$label b$b exit=$?"
