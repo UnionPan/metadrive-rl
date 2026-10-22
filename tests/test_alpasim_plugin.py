@@ -20,7 +20,10 @@ class _Route:
 
 
 def _inputs(poses, seed, t_us, speed=8.0):
-    frame = base.CameraFrame(t_us, np.zeros((64, 96, 3), np.uint8))
+    # Like the servicer, hand over a fresh list holding the same pose objects.
+    poses = sorted(poses, key=lambda p: p[0])
+    # The servicer passes plain tuples, not CameraFrame instances.
+    frame = (t_us, np.zeros((64, 96, 3), np.uint8))
     return base.PredictionInput(
         camera_images={"cam": [frame]},
         command=base.DriveCommand.STRAIGHT,
@@ -46,7 +49,7 @@ def _record(pred):
 
 def test_fixed_policy_selects_its_candidate():
     model = _model("fixed:YIELD")
-    pred = model.predict(_inputs([], 100, 0))
+    pred = model.predict(_inputs([(0, object())], 100, 0))
     rec = _record(pred)
     assert rec["action"] == "YIELD" and rec["is_decision"]
     assert pred.candidate_positions.shape == (12, 40, 3)
@@ -56,7 +59,7 @@ def test_fixed_policy_selects_its_candidate():
 
 def test_decisions_are_held_per_session():
     model = _model("fixed:CHANGE_LANE_LEFT@10", decision_period_s=0.5)
-    a, b = [], []
+    a, b = [(0, object())], [(0, object())]
     recs_a = [_record(model.predict(_inputs(a, 10 + k, k * 100_000))) for k in range(6)]
     rec_b = _record(model.predict(_inputs(b, 500, 0)))
     assert [r["is_decision"] for r in recs_a] == [True, False, False, False, False, True]
@@ -67,7 +70,7 @@ def test_decisions_are_held_per_session():
 
 def test_session_reset_on_seed_discontinuity():
     model = _model("rule")
-    poses = []
+    poses = [(0, object())]
     model.predict(_inputs(poses, 10, 0))
     rec = _record(model.predict(_inputs(poses, 999, 100_000)))
     assert rec["step"] == 0

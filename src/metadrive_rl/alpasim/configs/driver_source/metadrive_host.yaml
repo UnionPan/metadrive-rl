@@ -1,0 +1,15 @@
+# @package _global_
+# MetaDrive driver running on the host (scripts/run_episode.sh starts it);
+# all other services are launched by the wizard. Requires host networking:
+# wizard.debug_flags.use_localhost=True.
+
+wizard:
+  run_sim_services:
+    ["renderer", "physics", "trafficsim", "controller", "runtime"]
+  external_services:
+    driver: ["localhost:6789"]
+
+runtime:
+  endpoints:
+    driver:
+      skip: false

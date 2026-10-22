@@ -53,12 +53,13 @@ class _SessionState:
 
 
 class _SessionTable:
-    """Per-session state keyed by the driver's per-session pose list.
+    """Per-session state keyed by the session's first ego pose object.
 
-    ``PredictionInput`` carries no session id, but the servicer passes each
-    session's own ``poses`` list object, and ``inference_seed`` increases by one
-    per call within a session. The seed check guards against object-id reuse
-    after a session is garbage collected.
+    ``PredictionInput`` carries no session id. The servicer rebuilds its pose
+    list (``sorted``) on every egomotion update, so the list itself is not a
+    stable key, but the pose objects in it persist and the oldest one stays
+    first. ``inference_seed`` increases by one per call within a session; the
+    seed check guards against object-id reuse after a session ends.
     """
 
     def __init__(self, max_sessions: int = 512):
@@ -66,7 +67,7 @@ class _SessionTable:
         self._max = max_sessions
 
     def get(self, pred_input: PredictionInput) -> _SessionState:
-        key = id(pred_input.ego_pose_history)
+        key = id(pred_input.ego_pose_history[0])
         state = self._states.get(key)
         if state is None or state.next_inference_seed != pred_input.inference_seed:
             if len(self._states) >= self._max:
@@ -148,12 +149,12 @@ class MetaDriveModel(BaseTrajectoryModel):
         ]
 
     def _observe(self, p: PredictionInput, state: _SessionState) -> Observation:
-        frames = p.camera_images[self._camera_ids[0]]
-        image = frames[-1].image
+        # The servicer passes plain (timestamp_us, image) tuples.
+        timestamp_us, image = p.camera_images[self._camera_ids[0]][-1]
         if isinstance(image, torch.Tensor):
             image = image.cpu().numpy()
         return Observation(
-            timestamp_us=int(frames[-1].timestamp_us),
+            timestamp_us=int(timestamp_us),
             speed_mps=float(p.speed),
             accel_mps2=float(p.acceleration),
             route_xy=_route_xy(p.route),

@@ -1,0 +1,14 @@
+diff --git a/src/eval/src/eval/aggregation/processing.py b/src/eval/src/eval/aggregation/processing.py
+index 26dcbee..a3cef26 100644
+--- a/src/eval/src/eval/aggregation/processing.py
++++ b/src/eval/src/eval/aggregation/processing.py
+@@ -384,6 +384,9 @@ def rename_legend_handles(ax: plt.Axes, trajectory_uid_df: pl.DataFrame) -> None
+ 
+     # Get handles and labels
+     handles, labels = ax.get_legend_handles_labels()
++    # Seaborn adds no legend entries for a single run; nothing to rename.
++    if not handles:
++        return
+ 
+     # Apply mapping to create new labels
+     new_labels = [run_uuid_to_name.get(label, label) for label in labels]

@@ -1,0 +1,19 @@
+# @package _global_
+# MetaDrive driver on this host plus an NRE renderer on a remote GPU machine.
+#
+# NRE ships kernels for Ampere and newer only, so on Turing hosts the renderer
+# runs elsewhere (scripts/serve_renderer.sh) and is forwarded to this host,
+# typically through an SSH tunnel. Its address comes from the environment:
+#   METADRIVE_RENDERER_ADDR=localhost:46100
+# Requires host networking: wizard.debug_flags.use_localhost=True.
+
+wizard:
+  run_sim_services: ["physics", "trafficsim", "controller", "runtime"]
+  external_services:
+    driver: ["localhost:6789"]
+    renderer: ["${oc.env:METADRIVE_RENDERER_ADDR}"]
+
+runtime:
+  endpoints:
+    driver:
+      skip: false

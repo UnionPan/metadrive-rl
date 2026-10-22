@@ -1,0 +1,107 @@
+diff --git a/src/runtime/alpasim_runtime/services/sensorsim_service.py b/src/runtime/alpasim_runtime/services/sensorsim_service.py
+index f969fbf..2e552cf 100644
+--- a/src/runtime/alpasim_runtime/services/sensorsim_service.py
++++ b/src/runtime/alpasim_runtime/services/sensorsim_service.py
+@@ -9,6 +9,8 @@ import logging
+ from asyncio import Lock
+ from typing import Any, Dict, Type
+ 
++from io import BytesIO
++
+ from alpasim_grpc.v0.common_pb2 import Empty
+ from alpasim_grpc.v0.logging_pb2 import LogEntry
+ from alpasim_grpc.v0.sensorsim_pb2 import (
+@@ -28,7 +30,7 @@ from alpasim_grpc.v0.sensorsim_pb2 import (
+     RGBRenderReturn,
+ )
+ from alpasim_grpc.v0.sensorsim_pb2_grpc import SensorsimServiceStub
+-from alpasim_runtime.camera_catalog import CameraCatalog
++from alpasim_runtime.camera_catalog import CameraCatalog, CameraDefinition
+ from alpasim_runtime.config import SimulationConfig
+ from alpasim_runtime.services.service_base import ServiceBase, SessionInfo
+ from alpasim_runtime.services.session_configs import RendererSessionConfig
+@@ -36,9 +38,25 @@ from alpasim_runtime.telemetry.rpc_wrapper import profiled_rpc_call
+ from alpasim_runtime.types import Clock, RuntimeCamera
+ from alpasim_utils.geometry import Pose, Trajectory, pose_to_grpc
+ from alpasim_utils.types import ImageWithMetadata
++from PIL import Image
+ 
+ logger = logging.getLogger(__name__)
+ 
++_PLACEHOLDER_CACHE: dict[tuple[tuple[int, int], int], bytes] = {}
++
++
++def _placeholder_image(resolution_hw: tuple[int, int], image_format: ImageFormat) -> bytes:
++    """Encode a black frame of the camera's resolution for skip-mode rendering."""
++    key = (tuple(resolution_hw), int(image_format))
++    if key not in _PLACEHOLDER_CACHE:
++        height, width = resolution_hw
++        buffer = BytesIO()
++        Image.new("RGB", (width, height)).save(
++            buffer, format="PNG" if image_format == ImageFormat.PNG else "JPEG"
++        )
++        _PLACEHOLDER_CACHE[key] = buffer.getvalue()
++    return _PLACEHOLDER_CACHE[key]
++
+ WILDCARD_SCENE_ID = "*"
+ MAX_GRPC_MESSAGE_BYTES = 64 * 1024 * 1024
+ SENSORSIM_RETRY_DELAYS_S = (0.5, 2.0)
+@@ -158,9 +176,21 @@ class SensorsimService(ServiceBase[SensorsimServiceStub]):
+     async def get_available_cameras(
+         self, scene_id: str
+     ) -> list[AvailableCamerasReturn.AvailableCamera]:
+-        """Fetch available cameras for `scene_id`, skipping RPC in skip mode."""
++        """Fetch available cameras for `scene_id`, skipping RPC in skip mode.
++
++        In skip mode the cameras are the fully specified local definitions
++        (``extra_cameras`` with pose, intrinsics, resolution and shutter), so
++        drivers still receive a valid rig without a renderer.
++        """
+         if self.skip:
+-            return []
++            return [
++                CameraDefinition.from_config(cfg).as_proto()
++                for cfg in self._camera_catalog.get_local_overrides().values()
++                if cfg.rig_to_camera is not None
++                and cfg.intrinsics is not None
++                and cfg.resolution_hw is not None
++                and cfg.shutter_type is not None
++            ]
+ 
+         session_info = self._require_session_info()
+ 
+@@ -408,13 +438,15 @@ class SensorsimService(ServiceBase[SensorsimServiceStub]):
+         compatibility with renderers that do provide one.
+         """
+         if self.skip:
+-            logger.info("Skip mode: sensorsim returning empty images")
++            logger.info("Skip mode: sensorsim returning placeholder images")
+             return (
+                 [
+                     ImageWithMetadata(
+                         start_timestamp_us=trigger.time_range_us.start,
+                         end_timestamp_us=trigger.time_range_us.stop,
+-                        image_bytes=b"",
++                        image_bytes=_placeholder_image(
++                            camera.render_resolution_hw, image_format
++                        ),
+                         camera_logical_id=camera.logical_id,
+                     )
+                     for camera, trigger in camera_triggers
+@@ -541,12 +573,13 @@ class SensorsimService(ServiceBase[SensorsimServiceStub]):
+         Returns an ImageWithMetadata containing the rendered image.
+         """
+         if self.skip:
+-            logger.info("Skip mode: sensorsim returning empty image")
+-            # Return empty image for skip mode
++            logger.info("Skip mode: sensorsim returning placeholder image")
+             return ImageWithMetadata(
+                 start_timestamp_us=trigger.time_range_us.start,
+                 end_timestamp_us=trigger.time_range_us.stop,
+-                image_bytes=b"",  # TODO: fill in with a placeholder image
++                image_bytes=_placeholder_image(
++                    camera.render_resolution_hw, image_format
++                ),
+                 camera_logical_id=camera.logical_id,
+             )
+ 
