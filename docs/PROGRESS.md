@@ -258,6 +258,31 @@ next step is simulator-verified preferences from matched-state branches
 AlpaSim's at-fault/offroad and progress outcomes). These are simulator-derived
 preferences, not RLHF.
 
+**Branch preferences** (`scripts/collect_branches.sh`,
+`metadrive_rl.data.branch_prefs`). For each scene, the expert log runs under
+force-GT to 4 s. Then each of 7 actions (BRAKE, YIELD, FOLLOW, CRUISE@5/10,
+CHANGE_LANE_LEFT/RIGHT@10) runs from that same state for 6 s under CATK.
+Ranking: a passing rollout beats a failing one; between two passing rollouts,
+more progress wins. Train: 62 scenes, 969 pairs (426 safety, 543 progress).
+val_cl: 16 scenes, 221 pairs (114 / 107), with no simulator failures.
+
+**Branch DPO** (β 0.1, lr 1e-4, init and reference SFT seed 0; the epoch is
+chosen on val_cl pair accuracy, 3 seeds):
+
+| | val_cl pair acc. | train pair acc. | KL to SFT | expert val regret (m) |
+|---|---|---|---|---|
+| SFT | 0.624 | 0.680 | 0 | 0.680 |
+| branch DPO (epoch 20, all seeds) | 0.733 | 0.81 | 1.2–1.5 | 0.51–0.57 |
+
+Unlike ADE-derived pairs, these carry signal SFT lacks: held-out pair
+accuracy rises by 11 points for every seed, and expert-imitation regret also
+falls. The policy changes substantially. On expert val states, greedy
+CRUISE@10 goes from 5% (SFT) to ~50%, FOLLOW stays at 47–58%, and BRAKE,
+YIELD and CRUISE@15 mostly disappear. Caveat: epoch selection uses val_cl
+pairs, so a val_cl closed-loop score for DPO is mildly optimistic. A clean
+comparison needs eval_big or test_cl. Closed-loop val_cl evaluation of seed 0
+is running on a single-GPU stack (GPU 1, `metadrive_single` topology).
+
 ## M4 — distributed RLVR (in progress)
 
 **Topology benchmark** (identical workload: rule policy, 4 val scenes × 2
