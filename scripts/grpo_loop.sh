@@ -13,7 +13,9 @@
 #        EVAL_SPLIT (if set, evaluate each new checkpoint greedily on it), EVAL_ROLLOUTS (2),
 #        SPLIT_CYCLE (space-separated split names; iteration i samples the (i-1) mod n-th),
 #        START (first iteration, to resume; the policy then starts from it<START-1>/policy.pt),
-#        INIT_POLICY (start from this checkpoint instead, e.g. to continue another run)
+#        INIT_POLICY (start from this checkpoint instead, e.g. to continue another run),
+#        POLICY_EXTRA (YAML file appended to every policy spec, e.g. gap_head/governor
+#        settings, so sampling and evaluation run with the same planner prior)
 set -euo pipefail
 
 SFT=$(realpath "${1:?usage: grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]}")
@@ -38,6 +40,7 @@ greedy: false
 decision_period_s: 0.5
 feature_dir: $dir/features
 YAML
+  [[ -n "${POLICY_EXTRA:-}" ]] && cat "$POLICY_EXTRA" >> "$dir/policy.yaml"
   start=$(date +%s)
   split=${SPLIT:-train}
   if [[ -n "${SPLIT_CYCLE:-}" ]]; then
@@ -75,6 +78,7 @@ policy: {type: neural, checkpoint: $policy}
 greedy: true
 decision_period_s: 0.5
 YAML
+    [[ -n "${POLICY_EXTRA:-}" ]] && cat "$POLICY_EXTRA" >> "$dir/eval_policy.yaml"
     SPLITS=${EVAL_SPLITS:-$HERE/../configs/evaluation/splits.yaml} "$HERE/evaluate.sh" \
       "$dir/eval_policy.yaml" "$EVAL_SPLIT" "$dir/eval" "${EVAL_ROLLOUTS:-2}" \
       eval.video.render_video=False > "$dir/eval.log" 2>&1
