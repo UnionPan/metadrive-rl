@@ -9,6 +9,7 @@
 #   policy-spec  rule (default), fixed:<ACTION>, or a policy YAML path
 # Env:  ALPASIM_DIR (default ~/ext/alpasim)
 #       DRIVER_SOURCE (metadrive_external_renderer | metadrive_no_render)
+#       DRIVER_GPU (default 2; GPU 0 runs physics/CATK, GPU 1 the renderer)
 #       METADRIVE_RENDERER_ADDR (default localhost:46100)
 set -euo pipefail
 
@@ -21,7 +22,7 @@ REPO=$(cd "$(dirname "$0")/.." && pwd)
 PY="$ALPASIM_DIR/.venv/bin/python"
 
 mkdir -p "$LOG_DIR"
-"$PY" -m alpasim_driver.main \
+CUDA_VISIBLE_DEVICES=${DRIVER_GPU:-2} "$PY" -m alpasim_driver.main \
   --config-path="$REPO/configs/simulator" --config-name=driver_metadrive \
   output_dir="$LOG_DIR/driver" model.checkpoint_path="$POLICY" \
   > "$LOG_DIR/driver.log" 2>&1 &
