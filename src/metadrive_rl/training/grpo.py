@@ -32,6 +32,7 @@ import polars as pl
 import torch
 import torch.nn.functional as F
 
+from metadrive_rl.evaluation.metrics import coverage_exit_us
 from metadrive_rl.policy.features import state_features
 from metadrive_rl.policy.neural import PolicyHead, save_checkpoint
 from metadrive_rl.training.sft import stack_context
@@ -67,17 +68,24 @@ def build(
     stats = {s: (np.mean(v), np.std(v)) for s, v in by_scene.items()}
 
     rows, feats = [], []
+    dropped_out_of_coverage = 0
     for path in find_rollouts(rollout_dir):
         log = read_rollout(path)
         if log.rollout_uuid not in rewards:
             continue  # failed or retried rollout without an aggregated score
         scene, reward = rewards[log.rollout_uuid]
+        # Decisions after the ego left the reconstructed corridor saw degraded
+        # renders and are outside AlpaSim's scored window: do not train on them.
+        exit_us = coverage_exit_us(path.parent)
         mean, std = stats[scene]
         # The std floor keeps near-identical groups (often just CATK traffic
         # noise) from being amplified to unit-variance advantages.
         advantage = (reward - mean) / max(std, min_std)
         for d in log.decisions:
             if not d["is_decision"]:
+                continue
+            if exit_us is not None and d["time_us"] >= exit_us:
+                dropped_out_of_coverage += 1
                 continue
             f = feature_dir / f"{d['decision_id']}.npy"
             if not f.exists():
@@ -118,6 +126,7 @@ def build(
         "policy_versions": sorted({r["policy_version"] for r in rows}),
         "progress_weight": progress_weight,
         "min_std": min_std,
+        "decisions_dropped_out_of_coverage": dropped_out_of_coverage,
     }
     (batch_dir / "manifest.json").write_text(json.dumps(manifest, indent=1))
     return manifest

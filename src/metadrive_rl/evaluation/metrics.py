@@ -41,3 +41,21 @@ def rollout_metrics(run_dir: str | Path) -> pl.DataFrame:
     return long.pivot(on="name", index=["clipgt_id", "rollout_id"], values="value").sort(
         "clipgt_id", "rollout_id"
     )
+
+
+# AlpaSim's aggregation stops scoring a rollout once the ego is this far from
+# the logged trajectory (eval config aggregation_modifiers.max_dist_to_gt_trajectory);
+# beyond it the scene reconstruction has no coverage and renders degrade.
+MAX_DIST_TO_GT_TRAJECTORY_M = 4.0
+
+
+def coverage_exit_us(
+    rollout_dir: str | Path, max_dist_m: float = MAX_DIST_TO_GT_TRAJECTORY_M
+) -> int | None:
+    """First timestamp at which the ego is ``max_dist_m`` or more from the logged
+    trajectory (``None`` if it never leaves), from the rollout's metrics.parquet."""
+    df = pl.read_parquet(Path(rollout_dir) / "metrics.parquet").filter(
+        (pl.col("name") == "dist_to_gt_trajectory") & pl.col("valid")
+    )
+    out = df.filter(pl.col("values") >= max_dist_m)["timestamps_us"]
+    return int(out.min()) if len(out) else None
