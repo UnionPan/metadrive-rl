@@ -48,12 +48,25 @@ camera, recorded pose, recorded actor poses; bottom 10% hood band excluded):
 | Over gRPC at 512×320 vs. downsampled photo | 21.38 dB |
 | Latency over gRPC, 512×320, 36 actors, JPEG | 46.6 ms (was 153 ms before vectorising) |
 
+**Generalisation across the 24 split scenes** (`python -m metadrive_rl.render.validate`,
+`reports/render_validation_24_scenes.json`, `reports/render_validation_montage.jpg`):
+full-frame PSNR median 18.0 dB (min 11.8, max 25.7); placing actors improves
+vehicle pixels by a median 2.2 dB (22 scenes with visible actors). Geometry and
+actor placement hold everywhere; the worst scenes are a night drive (our render
+is much brighter) and a sunny drive (flat sky misses the sun and gradients).
+
 Known gaps: (1) the sky is a flat colour: `model.background.textures` holds one
 panorama per camera whose parameterisation we could not identify; no mapping
-tried beat a flat colour on this overcast scene. (2) No ego-hood overlay.
-(3) NRE's per-frame ISP and per-track pose corrections (`tracks_calib`) are
-not applied; applying the deltas as right-multiplied corrections lowered PSNR,
-so their convention is unknown. (4) Only f-theta cameras are supported.
+tried beat a flat colour. (2) No camera response / exposure model. A per-scene
+affine colour fit on the other cameras' photos made the held-out front camera
+*worse* (median −3.2 dB, worse in 18/24 scenes), consistent with per-camera
+responses (`crf_params` is per camera); with one photo per camera there is no
+honest held-out check for a same-camera fit, so no calibration is applied.
+(3) No ego-hood overlay. (4) NRE's per-track pose corrections are not applied;
+right-multiplying them lowered PSNR, so their convention is unknown. (5) Only
+f-theta cameras. (6) Views far from the recorded path degrade (smears, floaters)
+— e.g. the rule policy 60–90 m off the logged position — so rendered
+observations are only trustworthy near the log.
 
 **No-render mode.** Before the renderer existed, closed-loop runs used
 AlpaSim's renderer skip mode, patched to report locally defined cameras and
@@ -102,19 +115,47 @@ interface (route waypoints only) does not provide.
 **Finding: collision metrics under log-replay traffic.** Every probe run
 reports front and rear collisions, including BRAKE (rear-ended at 4.1 s by the
 logged follower). Without a traffic model, recorded actors ignore the ego, so
-any deviation from the human log causes contact. Collision rates are therefore
-not a usable safety signal until reactive traffic is enabled.
+any deviation from the human log causes contact.
+
+**Reactive traffic (CATK).** `trafficsim=catk` (weights via Git LFS) runs on
+GPU 0 with physics. With CATK all 62 compared actors move differently from log
+replay and the rule policy is no longer rear-ended (`collision_rear` 0); its
+at-fault front collision with the truck it drives into remains. Evaluation
+therefore uses CATK and AlpaSim's aggregated scoring: a rollout fails on an
+at-fault collision or offroad, otherwise scores its clipped relative progress
+(`python -m metadrive_rl.evaluation.summarize`). Open issue: one actor's pose
+differs by 343 m between replay and CATK runs; not yet explained.
+
+## M2 — SFT (in progress)
+
+- Frozen splits: `configs/evaluation/splits.yaml`, public_2604 seed 0,
+  16 train / 4 val / 4 test (the development scene is in train). 24 scenes, 40 GB.
+- Expert collection (`scripts/collect_expert.sh`): the ego replays the human log
+  for the whole episode while the driver is called every step on gsplat frames;
+  images saved per decision (0.5 s). Labels: candidate with the lowest ADE to the
+  logged rig future over the 4 s plan (`metadrive_rl.data.labels`).
+- **Bug found by the label audit:** during long force-GT replays the runtime
+  stops sending dynamic state and the stock servicer reports speed 0 (its
+  docstring promises a finite-difference fallback the code lacks). Candidates
+  were planned from standstill and the median best-candidate ADE was 8.5 m with
+  52% lane-change labels. The plugin now falls back to pose-history finite
+  differences (logged as `speed_source`); median ADE on the first scene 0.46 m,
+  labels FOLLOW / CRUISE@5 for this slow-traffic drive. Data re-collected.
+- Encoder: DINOv2-small FP16, CLS + mean patch tokens (768-d), 88 ms per batch
+  of 32 frames on one RTX 8000.
+- Head: MLP on [image features, state features]; soft targets softmax(−ADE/τ);
+  checkpoint selection by validation regret (ADE of chosen − best).
 
 ## Tests
 
-- `pytest` in the AlpaSim venv: planner, plugin (renderer test skipped).
+- `pytest` in the AlpaSim venv: planner, plugin, labels, SFT (21 passed,
+  renderer test skipped there).
 - `pytest tests/test_gsplat_render.py` in `metadrive-render` with
   `METADRIVE_TEST_USDZ` set: renders vs. photo, resolution scaling.
 
 ## Next actions
 
-1. Closed-loop AlpaSim episode with the gsplat renderer; inspect the video.
-2. Enable reactive traffic (`trafficsim=catk`) and re-measure collisions.
-3. Download a held-out scene set; freeze train/val/test splits.
-4. M2: frozen visual encoder features + SFT head, labels from logged human
-   trajectories projected onto the action set.
+1. Finish re-collection (train + val), build datasets, extract features.
+2. Train SFT (image+state vs. state-only ablation); compare val regret.
+3. Closed-loop val evaluation with CATK: rule vs. SFT (`scripts/evaluate.sh`).
+4. M3: preference pairs from per-candidate ADE and closed-loop outcomes; DPO.
