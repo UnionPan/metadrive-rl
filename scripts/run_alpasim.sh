@@ -11,7 +11,11 @@
 #        ALPASIM_STACK_GPU (single_gpu topology; default DRIVER_GPU),
 #        ALPASIM_DRIVER_PORT (6789), BASEPORT (6000),
 #        ALPASIM_RENDERER_ADDRS (YAML list, default [localhost:46100]),
-#        ALPAMAYO_DTYPE (float16 on Turing; see patches/alpasim/0003)
+#        ALPAMAYO_DTYPE (float16 on Turing; see patches/alpasim/0003),
+#        DRIVER_SOURCE (external_alpamayo: four Alpamayo cameras | external_renderer:
+#                       cameras from the driver's wizard preset, e.g. VaVAM),
+#        DRIVER_OVERRIDES (space-separated Hydra overrides for the host driver,
+#                          e.g. "inference.context_length=8")
 set -euo pipefail
 
 LOG_DIR=$(realpath -m "${1:?usage: run_alpasim.sh <log-dir> <driver> [overrides...]}")
@@ -27,7 +31,8 @@ export ALPASIM_STACK_GPU=${ALPASIM_STACK_GPU:-${DRIVER_GPU:-0}}
 mkdir -p "$LOG_DIR"
 CUDA_VISIBLE_DEVICES=${DRIVER_GPU:-0} "$PY" -m alpasim_driver.main \
   --config-path="$REPO/configs/driver" --config-name="$DRIVER" \
-  output_dir="$LOG_DIR/driver" port="$ALPASIM_DRIVER_PORT" > "$LOG_DIR/driver.log" 2>&1 &
+  output_dir="$LOG_DIR/driver" port="$ALPASIM_DRIVER_PORT" ${DRIVER_OVERRIDES:-} \
+  > "$LOG_DIR/driver.log" 2>&1 &
 DRIVER_PID=$!
 trap 'kill $DRIVER_PID 2>/dev/null || true' EXIT
 
@@ -43,5 +48,5 @@ export COMPOSE_PROJECT_NAME="as-$(echo "$LOG_DIR" | md5sum | cut -c1-10)"
 cd "$ALPASIM_DIR"
 uv run alpasim_wizard "hydra.searchpath=[file://$REPO/configs/alpasim]" \
   deploy=local topology="${TOPOLOGY:-single_gpu}" driver="$DRIVER" \
-  driver_source=external_alpamayo wizard.debug_flags.use_localhost=True \
+  driver_source="${DRIVER_SOURCE:-external_alpamayo}" wizard.debug_flags.use_localhost=True \
   wizard.log_dir="$LOG_DIR/sim" wizard.baseport="${BASEPORT:-6000}" "$@"

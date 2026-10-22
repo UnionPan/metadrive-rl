@@ -1,0 +1,18 @@
+# @package _global_
+# Driver on this host plus the externally launched gsplat sensorsim
+# (scripts/serve_gsplat_renderer.sh). Cameras come from the driver's wizard
+# preset (e.g. VaVAM's synthetic OpenCV-pinhole front camera at 2 Hz).
+#   ALPASIM_DRIVER_PORT (default 6789)
+#   ALPASIM_RENDERER_ADDRS YAML list, e.g. '[localhost:46100]'
+# Requires host networking: wizard.debug_flags.use_localhost=True.
+
+wizard:
+  run_sim_services: ["physics", "trafficsim", "controller", "runtime"]
+  external_services:
+    driver: ["localhost:${oc.env:ALPASIM_DRIVER_PORT,6789}"]
+    renderer: ${oc.decode:${oc.env:ALPASIM_RENDERER_ADDRS,'[localhost:46100]'}}
+
+runtime:
+  endpoints:
+    driver:
+      skip: false
