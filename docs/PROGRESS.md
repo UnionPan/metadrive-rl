@@ -303,6 +303,13 @@ identical metrics: two small updates on 16 scenes did not change any greedy
 choice. Always-FOLLOW has the lowest at-fault collision rate; the rule policy
 the highest.
 
+**Simulator-aborted rollouts are excluded, not scored 0.** When aggregation
+is allowed despite failures, CATK-aborted rollouts appear in
+results-summary.json with score 0 and an error instead of metrics. The first
+main GRPO run crashed on them (missing `progress`); counting them as reward 0
+would have penalised the policy for a simulator error. GRPO batches and
+summaries now skip them and log the count (iteration 1: 4 of 64, one scene).
+
 **Evaluation noise: CATK samples.** Reactive traffic draws each agent's next
 motion token from the top-5 at temperature 1.0, so the same deterministic
 policy can get different outcomes in different runs (rule policy: at-fault
