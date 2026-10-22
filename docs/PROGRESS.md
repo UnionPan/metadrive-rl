@@ -264,6 +264,37 @@ floor the group reward std at 0.05 (small groups were amplified), 2 update
 epochs instead of 4 (clip fraction 0.3–0.4), optional greedy evaluation of
 every checkpoint on a held-out split.
 
+**Closed-loop comparison on val_cl** (16 scenes, 2 rollouts each, CATK,
+greedy policies, `metadrive_4gpu`; scene-level bootstrap CIs).
+Some rollouts fail inside CATK ("no usable map geometry was found within
+100 m of the current ego position"). Which scenes fail depends on the policy:
+1 scene for the rule policy, the same 4 other scenes for FOLLOW, SFT and GRPO
+(slow/holding policies), on both CATK replicas, so this is a policy-dependent
+simulator failure, not a missing map. Both views are reported.
+
+All completed rollouts (`reports/valcl_closed_loop_all.md`):
+
+| run | scenes | rollouts | score | pass rate | at-fault collision | offroad | progress | distance (m) |
+|---|---|---|---|---|---|---|---|---|
+| rule | 15 | 30 | 0.386 [0.151, 0.625] | 0.467 [0.2, 0.733] | 0.467 [0.2, 0.733] | 0.0667 [0, 0.2] | 0.614 [0.426, 0.8] | 105 [72, 141] |
+| always-FOLLOW | 12 | 24 | 0.491 [0.253, 0.709] | 0.667 [0.417, 0.875] | 0.333 [0.125, 0.583] | 0 [0, 0] | 0.641 [0.431, 0.817] | 80.7 [51.2, 112] |
+| SFT | 12 | 24 | 0.504 [0.254, 0.717] | 0.583 [0.333, 0.833] | 0.417 [0.167, 0.667] | 0 [0, 0] | 0.685 [0.461, 0.876] | 87.9 [54.8, 122] |
+| GRPO-smoke-it2 | 12 | 24 | 0.462 [0.211, 0.709] | 0.542 [0.25, 0.792] | 0.458 [0.208, 0.75] | 0 [0, 0] | 0.667 [0.453, 0.857] | 84.8 [54, 117] |
+
+Matched scenes, completed for every policy (`reports/valcl_closed_loop_matched.md`):
+
+| run | scenes | rollouts | score | pass rate | at-fault collision | offroad | progress | distance (m) |
+|---|---|---|---|---|---|---|---|---|
+| rule | 11 | 22 | 0.449 [0.177, 0.721] | 0.455 [0.182, 0.727] | 0.545 [0.273, 0.818] | 0 [0, 0] | 0.735 [0.504, 0.921] | 94.2 [56.2, 131] |
+| always-FOLLOW | 11 | 22 | 0.49 [0.26, 0.728] | 0.682 [0.409, 0.909] | 0.318 [0.0909, 0.591] | 0 [0, 0] | 0.638 [0.41, 0.837] | 76.5 [47.4, 110] |
+| SFT | 11 | 22 | 0.504 [0.274, 0.734] | 0.591 [0.318, 0.864] | 0.409 [0.136, 0.682] | 0 [0, 0] | 0.668 [0.437, 0.879] | 81 [49.9, 115] |
+| GRPO-smoke-it2 | 11 | 22 | 0.504 [0.274, 0.734] | 0.591 [0.318, 0.864] | 0.409 [0.136, 0.682] | 0 [0, 0] | 0.667 [0.436, 0.878] | 81.1 [50, 116] |
+
+No policy is distinguishable. The SFT and GRPO-smoke checkpoints give
+identical metrics: two small updates on 16 scenes did not change any greedy
+choice. Always-FOLLOW has the lowest at-fault collision rate; the rule policy
+the highest.
+
 **Evaluation noise: CATK samples.** Reactive traffic draws each agent's next
 motion token from the top-5 at temperature 1.0, so the same deterministic
 policy can get different outcomes in different runs (rule policy: at-fault
@@ -305,8 +336,11 @@ closed loop.
 
 ## Next actions
 
-1. M2 exit gate: closed-loop val evaluation (CATK) of rule vs. always-FOLLOW
-   vs. SFT seed 0 through the driver API (running).
-2. M3: DPO from the SFT checkpoint; M4: first GRPO iterations.
-3. Closed-loop val evaluation with CATK: rule vs. SFT (`scripts/evaluate.sh`).
-4. M3: preference pairs from per-candidate ADE and closed-loop outcomes; DPO.
+1. Main GRPO run (running): 8 iterations rotating through four disjoint
+   training subsets (62 scenes), groups of 4, 12 s episodes; then greedy
+   evaluation on val_cl against SFT on matched scenes.
+2. M3 branch preferences (`scripts/collect_branches.sh`) and DPO on them.
+3. Investigate CATK's policy-dependent "no map geometry" failures.
+4. AIS: build history-sensitive scenarios (aliasing/occlusion) for a
+   closed-loop test; offline results are null so far.
+5. Demo: side-by-side frozen/SFT/GRPO videos (`metadrive_rl.visualization.compare`).
