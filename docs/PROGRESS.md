@@ -711,6 +711,20 @@ Pooled over the three policies (bootstrap over scenes): score **+0.076
 are the scenes where CATK's stochastic traffic flips outcomes most, so on
 11 scenes the CI still touches zero.
 
+**Demo, and a limit of this evaluation** (`demos/451cbe44_follow_vs_governor.mp4`,
+not in Git): one rollout each of always-FOLLOW and always-FOLLOW + v2 in
+`451cbe44`, a scene where v2 passed 2/2 on val_cl. This time both collided:
+- always-FOLLOW holds 4.3 m/s into the car ahead (contact at 12.1 s).
+- With the governor, the ego is hit at 10.8 s by car 106. That is a moving
+  track with no dynamic Gaussians, which appears in the camera only as a red
+  smear baked into the background. The governor cannot brake for what the
+  renderer does not draw.
+
+In the same rollout the governor also capped speed on estimates of 8–16 m
+while the true gap along the path was 37–48 m (a phantom). CATK flips
+outcomes in such scenes from run to run. The demo illustrates the mechanism
+and the limits; it is not evidence of an effect.
+
 **Confirmatory evaluation on eval_big (96 held-out scenes), running.**
 always-FOLLOW, always-FOLLOW + v2 and SFT + v2, paired with the SFT and
 GRPO-it8 runs on identical scenes. Two `eval_powered.sh` instances share the
