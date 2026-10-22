@@ -175,18 +175,49 @@ scenes contain no generalisable signal, visual or not. Response: training split
 extended to 64 scenes (val/test unchanged, verified) and ADE regression made
 the default objective.
 
+**Data scale-up.** 48 training scenes added (64 total); 62 collected — two
+scenes fail AlpaSim's own route sanity checks on every attempt and are
+excluded. Collecting all pending scenes in one AlpaSim run (4 concurrent
+rollouts, no videos) took 18 min for 46 scenes vs ~3 min per scene before
+(~7.7× throughput), after fixing renderer cache thrashing (2-scene GPU cache
+vs 4 concurrent scenes: 600 reloads in 10 min; default cache now 6).
+Dataset v2: 1984 train / 128 val decisions, FOLLOW 49% of labels.
+
+**Bug: NaN route waypoints.** AlpaSim routes can end in NaN waypoints; the
+route features turned them into NaN inputs for 24 rows, which silently voided a
+full SFT sweep (every configuration collapsed to the same 1.93 m regret).
+Features now drop non-finite waypoints and training data is checked for
+non-finite values (planner was already robust).
+
+**SFT round 2 — 62 train scenes, 3 seeds** (`reports/m2_sft_regret.md`,
+`reports/m2_sft_regret.png`):
+
+| Model | Val regret (m) |
+|---|---|
+| always FOLLOW | 0.801 |
+| ADE regression, state only | 0.846 ± 0.079 |
+| ADE regression, DINOv2-small (any regularisation/context) | 0.798–0.800 |
+| ADE regression, DINOv2-base | 0.731 ± 0.022 |
+| ADE regression, DINOv2-base, 3-decision context | **0.680 ± 0.023** |
+| soft-label CE, DINOv2-small | 1.100 ± 0.064 |
+
+Images only help with the larger encoder, and a 3-decision frame stack helps
+further (−15% regret vs. the best constant action), an early data point for
+H1 (history helps). Caveat: models were selected and compared on the same 4
+validation scenes; claims go to the test split. The closed-loop checkpoint is
+fixed in advance as seed 0 (val regret 0.682), not the best seed.
+
 ## Tests
 
-- `pytest` in the AlpaSim venv: planner, plugin, labels, SFT (21 passed,
-  renderer test skipped there).
+- `pytest` in the AlpaSim venv: planner, plugin, labels, SFT/DPO/GRPO
+  (27 passed, renderer test skipped there).
 - `pytest tests/test_gsplat_render.py` in `metadrive-render` with
   `METADRIVE_TEST_USDZ` set: renders vs. photo, resolution scaling.
 
 ## Next actions
 
-1. Collect expert data on the 48 added training scenes; retrain SFT and
-   re-check against always-FOLLOW and the state-only ablation.
-2. If images still add nothing, try a larger encoder (DINOv2-base) and denser
-   decisions before blaming the representation.
+1. M2 exit gate: closed-loop val evaluation (CATK) of rule vs. always-FOLLOW
+   vs. SFT seed 0 through the driver API (running).
+2. M3: DPO from the SFT checkpoint; M4: first GRPO iterations.
 3. Closed-loop val evaluation with CATK: rule vs. SFT (`scripts/evaluate.sh`).
 4. M3: preference pairs from per-candidate ADE and closed-loop outcomes; DPO.
