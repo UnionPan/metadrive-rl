@@ -621,9 +621,36 @@ not used. Some misses are renders that break down far from the recorded path
 and cannot be fixed by perception.
 
 Governor v2 = conv 6×8 head (`arch_conv6x8_s0`, seed 0), min filter over 5
-calls, range 25 m. Running: always-FOLLOW + governor v2 on val_cl (GPU 2
-stack). The v1 runs for SFT and GRPO-it8 continue on GPU 1 to complete the
-original ablation.
+calls, range 25 m.
+
+**Closed-loop results** (val_cl, 2 rollouts, 12 matched scenes, scene-bootstrap CIs):
+
+| run | score | pass rate | at-fault collision | progress |
+|---|---|---|---|---|
+| always-FOLLOW | 0.491 [0.253, 0.709] | 0.667 | 0.333 | 0.641 |
+| always-FOLLOW + governor v1 | 0.491 [0.259, 0.699] | 0.667 | 0.333 | 0.605 |
+| **always-FOLLOW + governor v2** | **0.603 [0.353, 0.824]** | **0.792** | **0.208** | 0.625 |
+| SFT | 0.504 [0.254, 0.717] | 0.583 | 0.417 | 0.685 |
+| SFT + governor v1 | 0.504 [0.250, 0.754] | 0.583 | 0.417 | 0.646 |
+
+Paired against always-FOLLOW:
+- **v1:** score +0.000, progress −0.036. The 2 scenes that change go in
+  opposite directions.
+- **v2:** score +0.111 [−0.027, +0.292], at-fault collision −0.125 [−0.292,
+  0.000], progress −0.016 [−0.061, +0.014]. All 3 changed scenes are
+  moving-car rear-end scenes (see the collision split above): `451cbe44`
+  2/2 collisions → 2/2 passes, `d5cc3763` 1 collision fixed, `17ab62e4` one
+  fixed and one new.
+
+Closed-loop perception error before contact, from the driver's own logs:
+- v1: recall 0.78, dangerous miss 15%, bias +8.8 m.
+- v2: recall 0.83, dangerous miss 9%, bias +5.9 m, false alarm 0.2%.
+
+The effect is where the mechanism predicts and in the predicted direction,
+but the CI still touches zero on 12 scenes. The parked-car scenes are
+untouched, as expected. A claim needs eval_big. The GRPO-it8 + v1 run was
+stopped after v1 showed exactly zero effect for both always-FOLLOW and SFT.
+Running: SFT + v2 (GPU 1 stack) and GRPO-it8 + v2 (GPU 2 stack).
 
 ## Tests
 
