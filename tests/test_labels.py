@@ -67,3 +67,18 @@ def test_gap_metrics_separate_misses_from_false_alarms():
     assert m["recall_lead_within_10m"] == 0.5
     assert m["dangerous_miss_rate"] == 0.5
     assert m["false_alarm_rate"] == 0.5
+
+
+def test_visible_tracks_keep_only_vehicles_the_renderer_draws():
+    from metadrive_rl.data.lead_gap import visible_tracks
+
+    still = [[0.0, 0.0, 0.0, 0, 0, 0, 1]] * 2
+    moving = [[0.0, 0.0, 0.0, 0, 0, 0, 1], [30.0, 0.0, 0.0, 0, 0, 0, 1]]
+    tracks = {
+        "tracks_id": ["car", "parked", "ghost", "walker"],
+        "tracks_label_class": ["automobile", "automobile", "automobile", "person"],
+        "tracks_timestamps_us": [[0, 10], [0, 10], [5, 20], [0, 10]],
+        "tracks_poses": [moving, still, moving, moving],
+    }
+    # "car" has dynamic Gaussians over its span; "ghost" moves but has none.
+    assert visible_tracks(tracks, {(0, 10)}) == {"car", "parked"}

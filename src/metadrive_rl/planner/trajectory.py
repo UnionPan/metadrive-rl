@@ -49,7 +49,10 @@ class PlannerConfig:
     cruise_accel: float = 1.5
     cruise_decel: float = 2.0
     follow_decel: float = 1.0
-    # Lead-gap speed governor (used only when a lead gap is given).
+    # Lead-gap speed governor (used only when a lead gap is given). Gaps
+    # beyond its range are treated as no lead: far estimates are the least
+    # reliable and a far lead needs no speed cap.
+    governor_range_m: float = 60.0
     time_headway_s: float = 1.5
     standstill_gap_m: float = 2.0
     gap_decel: float = 3.0
@@ -203,7 +206,11 @@ class ModeConditionedPlanner:
         d_target = self.next_lane_offset(action, committed_offset_m)
         v_target, a_max, d_max = self._longitudinal_limits(action, v0)
         flags = {"speed_capped": False, "gap_capped": False, "fallback": False}
-        governed = lead_gap_m is not None and action.mode != Mode.BRAKE
+        governed = (
+            lead_gap_m is not None
+            and lead_gap_m < cfg.governor_range_m
+            and action.mode != Mode.BRAKE
+        )
 
         # Curvature speed limit, propagated backwards so the profile starts
         # slowing before a bend rather than inside it.

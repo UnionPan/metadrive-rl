@@ -9,6 +9,7 @@ from metadrive_rl.planner import (
     HighLevelAction,
     Mode,
     ModeConditionedPlanner,
+    PlannerConfig,
 )
 
 STRAIGHT_ROUTE = np.stack([np.linspace(0, 120, 25), np.zeros(25)], axis=1)
@@ -157,3 +158,10 @@ def test_governor_follows_moving_lead_at_headway(planner):
     assert min_gap > 0.5 * cfg.standstill_gap_m
     assert abs(gap - (cfg.standstill_gap_m + cfg.time_headway_s * v_lead)) < 2.0
     assert abs(v - v_lead) < 0.5
+
+
+def test_governor_ignores_leads_beyond_its_range():
+    near = ModeConditionedPlanner(PlannerConfig(governor_range_m=25.0))
+    cruise = HighLevelAction(Mode.CRUISE, 15.0)
+    assert not near.plan(cruise, 15.0, 0.0, STRAIGHT_ROUTE, lead_gap_m=30.0).flags["gap_capped"]
+    assert near.plan(cruise, 15.0, 0.0, STRAIGHT_ROUTE, lead_gap_m=20.0).flags["gap_capped"]
