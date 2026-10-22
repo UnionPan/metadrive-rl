@@ -15,8 +15,8 @@ Git tag `archive/v0-mlp-planner`.
 |---|---|
 | Alpamayo 1 (`nvidia/Alpamayo-R1-10B`) in AlpaSim | closed-loop episode runs: 1 GPU, fp16, ~3–6 s per inference |
 | Alpamayo 2 Super (`nvidia/Alpamayo2-Super`, 36B) in AlpaSim | closed-loop episode runs: 2 GPUs (`ALPAMAYO_DEVICE_MAP=layer-split`), fp16, ~13 s per inference |
-| Alpamayo 1.5 (`nvidia/Alpamayo-1.5-10B`) | blocked: needs access to the gated `nvidia/Cosmos-Reason2-8B` (auto-approved on request) |
-| AlpaGym (`NVlabs/alpagym`) | environment builds (user-space CUDA 12.8 toolkit for `grouped-gemm`); 469 unit tests pass. The 2-GPU smoke run needs `redis-server`, cuDNN and NCCL headers (sudo), Cosmos-Reason2 access, and its policy hard-codes bf16 (emulated on Turing) |
+| Alpamayo 1.5 (`nvidia/Alpamayo-1.5-10B`) in AlpaSim | closed-loop episode runs: 1 GPU, fp16, ~5 s per inference (needs access to the gated `nvidia/Cosmos-Reason2-8B`) |
+| AlpaGym (`NVlabs/alpagym`) | environment builds (user-space CUDA 12.8 toolkit for `grouped-gemm`); 469 unit tests pass. The 2-GPU smoke run needs `redis-server`, cuDNN and NCCL headers (sudo), and its policy hard-codes bf16 (emulated on Turing); the Alpamayo 1.5 checkpoint is converted to AlpaGym format |
 | alpamayo-recipes (`NVlabs/alpamayo-recipes`) | repository tests pass (32). The recipes themselves target 8× H100 (SFT), ≥ 5× 80 GB (RL), or Blackwell (FP8/NVFP4 quantization) |
 
 Smoke test (one scene, 6 s):

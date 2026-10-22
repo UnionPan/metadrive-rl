@@ -32,9 +32,14 @@ def load(name: str, dtype: torch.dtype, device: str):
     else:
         from alpamayo1_5 import helper
         from alpamayo1_5.models.alpamayo1_5 import Alpamayo1_5 as Model
-    config = Model.config_class.from_pretrained(MODELS[name])
-    config.attn_implementation = "sdpa"
-    model = Model.from_pretrained(MODELS[name], config=config, dtype=dtype).to(device).eval()
+    if name == "alpamayo1":
+        # Alpamayo 1 reads attention from its own config field.
+        config = Model.config_class.from_pretrained(MODELS[name])
+        config.attn_implementation = "sdpa"
+        kwargs = {"config": config}
+    else:  # as AlpaSim's Alpamayo 1.5 driver loads it
+        kwargs = {"attn_implementation": "sdpa"}
+    model = Model.from_pretrained(MODELS[name], dtype=dtype, **kwargs).to(device).eval()
     return model, helper
 
 

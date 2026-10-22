@@ -1,0 +1,33 @@
+# Alpamayo 1.5 (nvidia/Alpamayo-1.5-10B; backbone config from the gated nvidia/Cosmos-Reason2-8B) as an AlpaSim driver on this host
+# (python -m alpasim_driver.main --config-path configs/driver --config-name alpamayo1_5).
+# Mirrors AlpaSim's wizard driver config. On Turing set ALPAMAYO_DTYPE=float16
+# (patches/alpasim/0003); bf16 is emulated there and ~13x slower.
+# Navigation is language-based, not waypoint commands.
+log_level: INFO
+model:
+  model_type: alpamayo1_5
+  checkpoint_path: nvidia/Alpamayo-1.5-10B
+  device: cuda
+  image_decode_device: cuda
+  num_trajectory_samples: 1
+  trajectory_selection:
+    strategy: ALWAYS_FIRST
+    max_num_distance_points: 64
+    skip_first_n_distance_points: 0
+host: "0.0.0.0"
+port: 6789
+inference:
+  use_cameras:
+    - camera_cross_left_120fov
+    - camera_front_wide_120fov
+    - camera_cross_right_120fov
+    - camera_front_tele_30fov
+  max_batch_size: 1
+  subsample_factor: 1
+  context_length: 4
+route:
+  use_waypoint_commands: false
+output_dir: ./runs/driver
+trajectory_optimizer:
+  enabled: false
+plot_debug_images: false
