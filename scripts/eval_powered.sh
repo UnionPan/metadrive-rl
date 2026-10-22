@@ -6,8 +6,9 @@
 #
 # Usage: scripts/eval_powered.sh <out-dir> LABEL=POLICY_SPEC [LABEL=POLICY_SPEC ...]
 # Env:   BATCH (24), ROLLOUTS (2), SPLIT (eval_big),
-#        TOPOLOGY (metadrive_4gpu), RENDERER_GPUS ("1 3"; one gsplat server per GPU,
-#        ports 46100, 46101, ...)
+#        TOPOLOGY (metadrive_4gpu), RENDERER_GPUS ("1 3"; one gsplat server per GPU on
+#        ports RENDERER_PORT, RENDERER_PORT+1, ...; default 46110 so it never touches
+#        renderers serving another stack), DRIVER_PORT / BASEPORT (see run_episode.sh)
 # Then:  python -m metadrive_rl.evaluation.summarize <out-dir>/<label> ... --common-scenes
 set -uo pipefail
 
@@ -22,14 +23,21 @@ BATCH=${BATCH:-24}
 export TOPOLOGY=${TOPOLOGY:-metadrive_4gpu}
 read -r -a GPUS <<< "${RENDERER_GPUS:-1 3}"
 addrs=()
-for i in "${!GPUS[@]}"; do addrs+=("localhost:$(( 46100 + i ))"); done
+PORT0=${RENDERER_PORT:-46110}
+for i in "${!GPUS[@]}"; do addrs+=("localhost:$(( PORT0 + i ))"); done
 export METADRIVE_RENDERER_ADDRS="[$(IFS=,; echo "${addrs[*]}")]"
 
 restart_renderers() {
-  for pid in $(pgrep -f "^python -m metadrive_rl.render.server"); do kill "$pid"; done
+  # Only this run's renderers (by port); other stacks keep theirs.
+  for i in "${!GPUS[@]}"; do
+    for pid in $(pgrep -f "^python -m metadrive_rl.render.server --port $(( PORT0 + i ))"); do
+      kill "$pid"
+    done
+  done
   sleep 3
   for i in "${!GPUS[@]}"; do
-    "$HERE/serve_gsplat_renderer.sh" $(( 46100 + i )) "${GPUS[$i]}" > "$OUT/renderer_$i.log" 2>&1 &
+    rm -f "$OUT/renderer_$i.log"
+    "$HERE/serve_gsplat_renderer.sh" $(( PORT0 + i )) "${GPUS[$i]}" > "$OUT/renderer_$i.log" 2>&1 &
   done
   for _ in $(seq 120); do
     local up=0

@@ -7,7 +7,7 @@
 wizard:
   run_sim_services: ["physics", "trafficsim", "controller", "runtime"]
   external_services:
-    driver: ["localhost:6789"]
+    driver: ["localhost:${oc.env:METADRIVE_DRIVER_PORT,6789}"]
 
 runtime:
   endpoints:
