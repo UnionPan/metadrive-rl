@@ -24,6 +24,7 @@ from concurrent import futures
 
 import grpc
 import numpy as np
+import torch
 from alpasim_grpc import API_VERSION_MESSAGE
 from alpasim_grpc.v0 import common_pb2, sensorsim_pb2, sensorsim_pb2_grpc
 from PIL import Image
@@ -149,8 +150,12 @@ class GsplatSensorsim(sensorsim_pb2_grpc.SensorsimServiceServicer):
             return self._renderers[scene_id]
         if scene_id not in self.paths:
             raise KeyError(f"unknown scene {scene_id}")
-        while len(self._renderers) >= self.cache_size:
-            self._renderers.popitem(last=False)
+        if len(self._renderers) >= self.cache_size:
+            while len(self._renderers) >= self.cache_size:
+                self._renderers.popitem(last=False)
+            # Return the evicted scenes' memory to the driver: renderers share
+            # GPUs with physics, CATK and drivers, which otherwise run out.
+            torch.cuda.empty_cache()
         logger.info("Loading scene %s", scene_id)
         renderer = GsplatRenderer(
             NuRecScene(self.paths[scene_id]), self.device, min_opacity=self.min_opacity
