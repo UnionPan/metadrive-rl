@@ -11,7 +11,8 @@
 #        SPLITS (splits file, e.g. a training subset), STEPS (sim steps per episode, 200),
 #        TOPOLOGY / METADRIVE_RENDERER_ADDRS (see run_episode.sh),
 #        EVAL_SPLIT (if set, evaluate each new checkpoint greedily on it), EVAL_ROLLOUTS (2),
-#        SPLIT_CYCLE (space-separated split names; iteration i samples the (i-1) mod n-th)
+#        SPLIT_CYCLE (space-separated split names; iteration i samples the (i-1) mod n-th),
+#        START (first iteration, to resume; the policy then starts from it<START-1>/policy.pt)
 set -euo pipefail
 
 SFT=$(realpath "${1:?usage: grpo_loop.sh <sft-checkpoint> <run-dir> [iterations] [group-size]}")
@@ -22,8 +23,12 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 PY=${ALPASIM_DIR:-$HOME/ext/alpasim}/.venv/bin/python
 
 mkdir -p "$RUN"
+START=${START:-1}
 policy=$SFT
-for it in $(seq 1 "$ITERS"); do
+if (( START > 1 )); then
+  policy=$RUN/it$(( START - 1 ))/policy.pt
+fi
+for it in $(seq "$START" "$ITERS"); do
   dir="$RUN/it$it"
   mkdir -p "$dir"
   cat > "$dir/policy.yaml" <<YAML
@@ -57,6 +62,7 @@ update = json.load(open(f"{d}/update.json"))
 print(json.dumps({"iteration": d.rsplit("it", 1)[1], "rollouts": build["rollouts"],
                   "decisions": build["decisions"], "reward_mean": build["reward_mean"],
                   "zero_variance_groups": build["groups_with_zero_reward_variance"],
+                  "simulator_errors": build["simulator_errors"],
                   "collect_s": collected - start, "update_s": done - collected,
                   "rollouts_per_hour": round(build["rollouts"] * 3600 / max(collected - start, 1), 1),
                   **{k: update["final"][k] for k in ("kl_to_ref", "entropy", "clip_fraction")}}))

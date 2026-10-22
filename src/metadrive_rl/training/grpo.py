@@ -37,11 +37,19 @@ from metadrive_rl.policy.neural import PolicyHead, save_checkpoint
 from metadrive_rl.training.sft import stack_context
 
 
+def simulator_error(rollout: dict) -> bool:
+    """Rollouts the simulator aborted (e.g. a CATK RPC failure) carry an error
+    instead of metrics; their score says nothing about the policy."""
+    return "error" in rollout["metrics"]
+
+
 def rollout_rewards(rollout_dir: Path, progress_weight: float) -> dict[str, tuple[str, float]]:
-    """rollout_id -> (scene, reward)."""
+    """rollout_id -> (scene, reward), excluding simulator-aborted rollouts."""
     out = {}
     for f in rollout_dir.glob("**/aggregate/results-summary.json"):
         for r in json.loads(f.read_text())["rollouts"]:
+            if simulator_error(r):
+                continue
             reward = r["score"] + progress_weight * r["metrics"]["progress"]
             out[r["rollout_id"]] = (r["clipgt_id"], float(reward))
     return out
@@ -97,6 +105,11 @@ def build(
     degenerate = sum(1 for s, (m, sd) in stats.items() if sd < 1e-6)
     manifest = {
         "rollout_dir": str(rollout_dir),
+        "simulator_errors": sum(
+            simulator_error(r)
+            for f in rollout_dir.glob("**/aggregate/results-summary.json")
+            for r in json.loads(f.read_text())["rollouts"]
+        ),
         "rollouts": len(rewards),
         "decisions": len(rows),
         "scenes": len(by_scene),

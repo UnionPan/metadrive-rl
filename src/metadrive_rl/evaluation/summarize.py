@@ -36,6 +36,8 @@ def rollouts(run_dir: Path) -> list[dict]:
     out = []
     for f in files:
         for r in json.loads(f.read_text())["rollouts"]:
+            if "error" in r["metrics"]:  # aborted by the simulator, not a policy outcome
+                continue
             out.append(
                 {
                     "scene": r["clipgt_id"],
