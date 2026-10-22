@@ -252,6 +252,31 @@ collision rate 0.50 in one run, 0.75 in another, on the same 4 scenes).
 Comparisons must average repeated runs; single-run differences on few scenes
 are noise.
 
+## M5 — AIS study (offline, first pass)
+
+Matched-budget comparison of history encoders on expert decision sequences
+(`python -m metadrive_rl.training.ais_offline`, `reports/m5_ais_offline.md`):
+same DINOv2-base features, cost objective, optimiser, epochs, and splits; the
+AIS variant adds a transition head predicting the next observation embedding
+(fixed 64-d PCA target) from (z_t, a_t).
+
+| encoder (DINOv2-base features, 3 seeds) | params | val regret (m) | val transition MSE |
+|---|---|---|---|
+| frame (memoryless) | 202656 | 0.695 ± 0.072 | — |
+| stack-3 | 251936 | 0.660 ± 0.160 | — |
+| GRU, task loss | 301728 | 0.759 ± 0.057 | — |
+| AIS-GRU, λ=1 | 328032 | 0.796 ± 0.008 | 0.871 |
+| AIS-GRU, λ=0.3 | 328032 | 0.750 ± 0.045 | 0.731 |
+| AIS-GRU, λ=0.1 | 328032 | 0.772 ± 0.025 | 0.841 |
+
+No encoder separates from the memoryless baseline (seed spread up to ±0.16 m on
+4 val scenes); AIS at λ=1 collapses to the constant policy (the transition loss
+dominates), at λ=0.3 it matches the plain GRU. H1/H2 are **not supported in
+this setting**. Expert-replay data is mostly smooth following with little
+history-dependent ambiguity; the meaningful test needs history-sensitive
+scenarios (aliasing, occlusion, changing traffic behaviour) evaluated in
+closed loop.
+
 ## Tests
 
 - `pytest` in the AlpaSim venv: planner, plugin, labels, SFT/DPO/GRPO
