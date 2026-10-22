@@ -303,6 +303,35 @@ identical metrics: two small updates on 16 scenes did not change any greedy
 choice. Always-FOLLOW has the lowest at-fault collision rate; the rule policy
 the highest.
 
+**GRPO main run** (`reports/m4_grpo_main.md`, `reports/m4_grpo_main.png`): 8
+iterations from SFT seed 0, rotating through four disjoint training subsets
+(62 scenes), groups of 4, 12 s episodes, `metadrive_4gpu`. 472 rollouts and
+11,328 sampled decisions, ~2.3 h of collection (180–220 rollouts/h, 10 s
+updates), 24 simulator-aborted rollouts excluded. KL to the SFT reference rose
+0.08 → 0.16; on-policy reward on the same subset four iterations apart
+changed by +0.02, +0.10, +0.01, −0.06 (noise-level).
+
+Greedy evaluation on val_cl, matched scenes (completed for every policy):
+
+| run | scenes | rollouts | score | pass rate | at-fault collision | offroad | progress | distance (m) |
+|---|---|---|---|---|---|---|---|---|
+| rule | 11 | 22 | 0.449 [0.177, 0.721] | 0.455 [0.182, 0.727] | 0.545 [0.273, 0.818] | 0 [0, 0] | 0.735 [0.504, 0.921] | 94.2 [56.2, 131] |
+| always-FOLLOW | 11 | 22 | 0.49 [0.26, 0.728] | 0.682 [0.409, 0.909] | 0.318 [0.0909, 0.591] | 0 [0, 0] | 0.638 [0.41, 0.837] | 76.5 [47.4, 110] |
+| SFT | 11 | 22 | 0.504 [0.274, 0.734] | 0.591 [0.318, 0.864] | 0.409 [0.136, 0.682] | 0 [0, 0] | 0.668 [0.437, 0.879] | 81 [49.9, 115] |
+| GRPO-it8 | 11 | 22 | 0.549 [0.277, 0.818] | 0.636 [0.364, 0.909] | 0.364 [0.0909, 0.636] | 0 [0, 0] | 0.673 [0.44, 0.891] | 81.9 [50.7, 117] |
+
+Paired GRPO-it8 − SFT over the same 11 scenes: +0.045 [+0.000, +0.136]
+(bootstrap over scenes) — driven by a single scene that improved; 10 scenes
+scored identically. Not a claim.
+
+**Statistical power of the closed-loop evaluation.** From paired per-scene
+score differences on val_cl: policies that behave alike (SFT vs always-FOLLOW:
+paired SD 0.043) are resolved by a few scenes, but behaviourally different
+policies (SFT vs rule: paired SD 0.264) need ~27 scenes to resolve ±0.10 and
+~107 for ±0.05 (95% CI half-width), before CATK's run-to-run traffic noise.
+The 16-scene val_cl/test_cl splits can only detect large effects; a final
+comparison needs ~100 held-out scenes with repeated rollouts.
+
 **Simulator-aborted rollouts are excluded, not scored 0.** When aggregation
 is allowed despite failures, CATK-aborted rollouts appear in
 results-summary.json with score 0 and an error instead of metrics. The first
@@ -351,11 +380,12 @@ closed loop.
 
 ## Next actions
 
-1. Main GRPO run (running): 8 iterations rotating through four disjoint
-   training subsets (62 scenes), groups of 4, 12 s episodes; then greedy
-   evaluation on val_cl against SFT on matched scenes.
-2. M3 branch preferences (`scripts/collect_branches.sh`) and DPO on them.
-3. Investigate CATK's policy-dependent "no map geometry" failures.
-4. AIS: build history-sensitive scenarios (aliasing/occlusion) for a
-   closed-loop test; offline results are null so far.
-5. Demo: side-by-side frozen/SFT/GRPO videos (`metadrive_rl.visualization.compare`).
+1. Larger frozen closed-loop evaluation set (~100 scenes, seeded, disjoint
+   from all splits) and paired SFT vs GRPO comparison with 2–3 rollouts each;
+   test_cl used once at the end.
+2. GRPO: lower learning rate (clip fraction stays ~0.4) and more iterations
+   once the evaluation can resolve ±0.05.
+3. M3 branch preferences (`scripts/collect_branches.sh`) and DPO on them.
+4. Investigate CATK's policy-dependent "no map geometry" aborts.
+5. AIS: history-sensitive closed-loop scenarios; offline results are null.
+6. Demo videos (`metadrive_rl.visualization.compare`).
