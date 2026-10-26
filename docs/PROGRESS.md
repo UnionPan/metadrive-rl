@@ -136,3 +136,19 @@ same place the navigation command embedding enters. Consequences:
 - Driver integration: a custom AlpaSim model plugin wrapping
   `VideoActionModelInference` that owns per-session AIS state, resets it per
   episode, and sets the residual before each `forward_inference` call.
+
+## M1 follow-up diagnostic: route-derived commands (declared before running)
+
+Episode records (`metadrive_ais.data.episodes`, `data/episodes/m1`) show:
+- AlpaSim's route is often off the human path. During the forced replay, 29% of
+  steps have the route > 1 m to the right at the 20 m lookahead (`451cbe44`
+  −8 m, `4e05c75c` −3 m).
+- In closed loop the derived command is RIGHT on 56% of policy steps (10% on the human path).
+- RIGHT is the command on 64% of the 4 steps before each first offroad step,
+  and in most episodes the first RIGHT precedes the first offroad step.
+
+Diagnostic: rerun B0a and B0b on val_cl, 2 rollouts, CATK, 4 s replay, with
+`route.use_waypoint_commands=false` (command fixed to STRAIGHT). Compare
+offroad and score against M1 on matched scenes. This tests the command
+channel only. It is not a candidate baseline: scenes with genuine turns need
+commands.

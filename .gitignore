@@ -25,3 +25,6 @@ mlruns/
 # Datasets: only manifests are versioned.
 data/datasets/**/*.parquet
 data/datasets/**/*.npy
+
+# Episode records and frames (large); rebuild with metadrive_ais.data.episodes.
+data/episodes/
