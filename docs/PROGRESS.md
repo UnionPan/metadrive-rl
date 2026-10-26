@@ -383,3 +383,32 @@ which is why the AIS objective comes from the CATK data. Compare with B3 (GRU
 trained end-to-end by the flow loss) and B1 (frame): the AIS objective helps
 the action head only if B4 beats B3 on held-out flow loss and ADE beyond the
 seed spread. Caveat: B4 trains fewer parameters (adapter only).
+
+## M5a — latent-policy RL (declared before running, 2026-10-26)
+
+Design (guideline Stage E, "stochastic AIS-conditioned latent control"):
+the adapter residual gets `W_c c_t` with `c_t ~ q_phi(c | z_t)`, a 4-d
+diagonal Gaussian (`models/latent_policy.py`). The channel is learned
+CVAE-style during flow SFT: a posterior sees the human's next 6 waypoints,
+the flow loss is the reconstruction, plus `0.01 · KL(posterior || prior)`.
+RL then trains only the prior: memory, adapter, decoder and VaVAM are frozen,
+so the logged `z_t` is exact and `log q_phi(c_t | z_t)` is recomputed
+for PPO (`training/latent_rl.py`, `scripts/latent_rl_loop.sh`).
+
+1. **Channel pretraining:** `flow_sft --memory frame --latent-dim 4
+   --kl-weight 0.01`, 8 epochs, seed 0 (frame: the best memory in M2/M3).
+2. **Gate before any RL:** prior latents must move the trajectory
+   (`latent_spread_final_m` ≥ 0.5 m at the 3 s waypoint with the flow noise
+   fixed), and the posterior must fit the human better than prior samples
+   (`flow_loss_posterior` < `flow_loss`). If it fails: one retry with
+   `--kl-weight 0.001 --latent-dim 8`, then stop and report.
+3. **RL:** 8 iterations. Each draws 16 train scenes (seeded, without the
+   two broken-route scenes) × 4 rollouts, CATK, 4 s replay, 8-frame
+   context. Reward: AlpaSim score per rollout, scene-group baseline. Credit:
+   queries after the replay up to the first incident. PPO: 4 epochs, clip 0.2,
+   lr 3e-4, `0.1 · KL(q_phi || q_v0)`. Checks: the logged log-probs match the
+   recomputed ones (≤ 1e-3) and the policy versions match.
+4. **Evaluation (val_cl, M1 protocol):** v0 (supervised prior, sampled
+   latents) vs v8 (after RL). Primary: paired score v8 − v0 (the RL effect,
+   same architecture and supervised budget). Both are also compared with B0b\*.
+   Per-iteration training scores are on different scenes and only diagnostic.
