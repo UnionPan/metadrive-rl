@@ -66,6 +66,29 @@ class MemoryEncoder(nn.Module):
             states.append(z)
         return torch.stack(states, 1)
 
+    def initial_state(self, batch: int, device=None) -> torch.Tensor:
+        """Empty history for ``batch`` new episodes: [B, k, step] (stack) or [B, state] (gru)."""
+        step_dim = self.state_dim + MOTION_DIM
+        if self.kind == "stack":
+            return torch.zeros(batch, self.stack_k, step_dim, device=device)
+        return torch.zeros(batch, self.state_dim, device=device)
+
+    def step(
+        self, state: torch.Tensor, embed: torch.Tensor, motion: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """One query: (state, e_t [B, D], u_{t-1} [B, 5]) -> (z_t, new state).
+
+        Matches ``forward`` on the whole sequence step by step.
+        """
+        x = torch.cat([self.obs(embed), motion / MOTION_SCALE.to(motion)], -1)
+        if self.kind == "frame":
+            return self.mix(x), state
+        if self.kind == "stack":
+            window = torch.cat([state[:, 1:], x[:, None]], 1)
+            return self.mix(window.flatten(1)), window
+        z = self.cell(x, state)
+        return z, z
+
 
 class AISHeads(nn.Module):
     def __init__(self, state_dim: int, embed_dim: int, hidden: int = 256):

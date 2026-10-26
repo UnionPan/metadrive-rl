@@ -169,3 +169,25 @@ frozen DINOv3 feature cache (`metadrive_ais.vision`; DINOv3-S
    path and the human future trajectory as flow-matching SFT targets.
 
 val, val_cl, test, test_cl and eval_big stay out of all training data.
+
+## M3 — AIS-conditioned VaVAM-B (groundwork)
+
+- `metadrive_ais.models.vavam_conditioning`: zero-initialized gated residual
+  on VaVAM's action tokens. On the real checkpoint (`tests/test_vavam_conditioning.py`):
+  gate 0 is bit-identical to stock inference, an open gate changes the
+  trajectory, and the flow-matching loss reaches only the adapter.
+- `metadrive_ais.drivers.vavam_ais`: AlpaSim driver plugin `vavam_ais`
+  (entry point), configured by an AIS bundle (VaVAM checkpoint + DINOv3
+  encoder + memory + adapter). Keeps per-session memory using the session id
+  from `patches/alpasim/0004`. Tests (`tests/test_vavam_ais_driver.py`, real
+  frames): zero-gate driver output equals the stock `vam` driver; interleaved
+  sessions equal isolated ones; with an open gate, history changes the trajectory.
+- Memory `step()` reproduces the training-time sequence forward for frame,
+  stack and GRU encoders (`test_step_matches_sequence_forward`).
+- Closed-loop smoke (`runs/ais/smoke_zero_gate`, zero-gate bundle,
+  `clipgt-b0499b70`): runs end to end. Its outcome (pass, 0.89 progress)
+  differs from three stock runs (collision at progress 0.04–0.06). The runs
+  match step by step for 16 steps (speeds, plans, obstacle distance), and at
+  step 15 the ego is 0.1–0.2 m from the lead car in all of them. The split is
+  a knife-edge near-collision, not a parity bug. Single smoke runs cannot be
+  compared; only matched multi-scene evaluations can.

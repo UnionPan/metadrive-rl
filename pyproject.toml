@@ -16,6 +16,10 @@ dependencies = [
 render = ["gsplat==1.5.3", "grpcio", "protobuf>=4,<5", "scipy", "pillow"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
+# AlpaSim driver plugin: VaVAM-B conditioned on an AIS memory.
+[project.entry-points."alpasim.models"]
+vavam_ais = "metadrive_ais.drivers.vavam_ais:VaVAMAISModel"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

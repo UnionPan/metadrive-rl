@@ -109,3 +109,19 @@ def test_episode_ends_at_first_incident():
     assert len(ep.embed) == 3 and ep.offroad_next[1] == 1.0 and np.isnan(ep.offroad_next[2])
     (full,) = episodes_from_table(steps, np.zeros((n, 4), dtype=np.float32), False)
     assert len(full.embed) == n
+
+
+@pytest.mark.parametrize("kind", KINDS)
+def test_step_matches_sequence_forward(kind):
+    """The driver's one-query-at-a-time update reproduces training's sequence forward."""
+    torch.manual_seed(0)
+    enc = MemoryEncoder(16, kind=kind, state_dim=8, stack_k=3).eval()
+    e, u = _inputs(t=7)
+    with torch.no_grad():
+        z_seq = enc(e, u)
+        state = enc.initial_state(e.shape[0])
+        z_steps = []
+        for t in range(e.shape[1]):
+            z, state = enc.step(state, e[:, t], u[:, t])
+            z_steps.append(z)
+    assert torch.allclose(z_seq, torch.stack(z_steps, 1), atol=1e-6)

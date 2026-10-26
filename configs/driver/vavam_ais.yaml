@@ -1,0 +1,28 @@
+# VaVAM-B + AIS memory (metadrive_ais.drivers.vavam_ais) as an AlpaSim driver
+# on this host (python -m alpasim_driver.main --config-path configs/driver
+# --config-name vavam_ais). Mirrors AlpaSim's wizard driver/vavam.yaml with local
+# assets (data/download_vavam_assets.sh --model VaVAM-B). The model runs in fp16.
+# context_length: 1 is the AlpaSim preset (B0a); VaVAM-B was trained with 8
+# frames at 2 Hz (B0b: inference.context_length=8).
+log_level: INFO
+model:
+  model_type: vavam_ais
+  checkpoint_path: ???  # AIS bundle (metadrive_ais.drivers.vavam_ais.save_bundle)
+  tokenizer_path: ${oc.env:HOME}/ext/alpasim/data/drivers/vavam/VQ_ds16_16384_llamagen_encoder.jit
+  device: cuda
+host: "0.0.0.0"
+port: 6789
+inference:
+  use_cameras: ["camera_front_wide_120fov"]
+  max_batch_size: 32
+  subsample_factor: 1
+  context_length: 1
+route:
+  default_command: 2
+  use_waypoint_commands: true
+  command_distance_threshold: 3.0
+  min_lookahead_distance: 20.0
+output_dir: ./runs/driver
+trajectory_optimizer:
+  enabled: false
+plot_debug_images: false
