@@ -154,3 +154,32 @@ class VaVAMAISModel(VAMModel):
             return super().predict_batch(prediction_inputs)
         finally:
             self._conditioner.delta = None
+
+
+def bundle_from_sft(sft_checkpoint, out, vavam_checkpoint) -> None:
+    """Deployable bundle from a ``metadrive_ais.training.flow_sft`` checkpoint."""
+    ckpt = torch.load(sft_checkpoint, map_location="cpu", weights_only=True)
+    memory = MemoryEncoder(**ckpt["memory"]["config"])
+    memory.load_state_dict(ckpt["memory"]["state_dict"])
+    adapter = GatedAdapter(memory.state_dim)
+    adapter.load_state_dict(ckpt["adapter"])
+    save_bundle(out, vavam_checkpoint, ckpt["feature_encoder"], memory, adapter)
+
+
+if __name__ == "__main__":
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(
+        description="Convert a flow-SFT checkpoint to a VaVAM-AIS bundle."
+    )
+    parser.add_argument("sft_checkpoint", type=Path)
+    parser.add_argument("out", type=Path)
+    parser.add_argument(
+        "--vavam-checkpoint",
+        type=Path,
+        default=Path.home() / "ext/alpasim/data/drivers/vavam/VAM_width_1024_pretrained_139k.pt",
+    )
+    args = parser.parse_args()
+    bundle_from_sft(args.sft_checkpoint, args.out, args.vavam_checkpoint)
+    print(f"bundle written to {args.out}")
