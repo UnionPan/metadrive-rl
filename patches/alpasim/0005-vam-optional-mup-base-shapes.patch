@@ -1,0 +1,35 @@
+diff --git a/src/driver/src/alpasim_driver/models/vam_model.py b/src/driver/src/alpasim_driver/models/vam_model.py
+index b80f79c..752c6cb 100644
+--- a/src/driver/src/alpasim_driver/models/vam_model.py
++++ b/src/driver/src/alpasim_driver/models/vam_model.py
+@@ -6,6 +6,7 @@
+ from __future__ import annotations
+ 
+ import logging
++import os
+ import platform
+ from collections import OrderedDict
+ from contextlib import nullcontext
+@@ -48,8 +49,20 @@ def load_inference_VAM(
+     config.pop("_recursive_", None)
+     config["gpt_checkpoint_path"] = None
+     config["action_checkpoint_path"] = None
+-    config["gpt_mup_base_shapes"] = None
+-    config["action_mup_base_shapes"] = None
++    # VaVAM was trained with muP base shapes (mup_shapes/*.bsh in
++    # valeoai/VideoActionModel). Without them muP's readout width multiplier
++    # is 1 and the action expert's flow velocity is 4x too large. Opt in by
++    # pointing VAVAM_MUP_SHAPES_DIR at the .bsh files; unset keeps the
++    # original behaviour.
++    shapes_dir = os.environ.get("VAVAM_MUP_SHAPES_DIR")
++    for key in ("gpt_mup_base_shapes", "action_mup_base_shapes"):
++        trained = config.get(key)
++        config[key] = (
++            os.path.join(shapes_dir, os.path.basename(str(trained)))
++            if shapes_dir and trained
++            else None
++        )
++    logger.info("VAM muP base shapes: %s / %s", config["gpt_mup_base_shapes"], config["action_mup_base_shapes"])
+ 
+     logger.info("Loading VAM checkpoint from %s", checkpoint_path)
+     logger.debug("VAM config: %s", config)

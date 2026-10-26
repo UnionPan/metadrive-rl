@@ -227,7 +227,7 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
 
-    from metadrive_ais.vision.vq_tokens import load_vam_model
+    from metadrive_ais.models.vavam_loading import load_vavam
 
     torch.manual_seed(args.seed)
     device = torch.device("cuda")
@@ -238,7 +238,8 @@ def main() -> None:
     val_eps = [e for e in episodes if e.seq.scene_id in held]
     train_w, val_w = windows(train_eps), windows(val_eps)
 
-    vam = load_vam_model(device)._vam.requires_grad_(False)
+    # VaVAM as trained (muP base shapes); AlpaSim's loader inflates the flow velocity 4x.
+    vam = load_vavam(device=device).requires_grad_(False)
     dim = episodes[0].seq.embed.shape[1]
     memory = MemoryEncoder(dim, args.memory).to(device)
     if args.memory_checkpoint:

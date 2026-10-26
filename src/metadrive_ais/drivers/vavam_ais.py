@@ -15,6 +15,7 @@ inference. Needs the session id (``patches/alpasim/0004``).
 
 from __future__ import annotations
 
+import os
 from collections import OrderedDict
 from typing import Any
 
@@ -38,6 +39,8 @@ def save_bundle(
         {
             "format": BUNDLE_FORMAT,
             "vavam_checkpoint": str(vavam_checkpoint),
+            # Trained against VaVAM with its muP base shapes (patches/alpasim/0005).
+            "vavam_mup_base_shapes": True,
             "feature_encoder": feature_encoder,
             "memory": {"config": memory.config, "state_dict": memory.state_dict()},
             "adapter": {
@@ -79,6 +82,11 @@ class VaVAMAISModel(VAMModel):
     ):
         if bundle.get("format") != BUNDLE_FORMAT:
             raise ValueError(f"not a VaVAM-AIS bundle: {bundle.get('format')!r}")
+        if bundle.get("vavam_mup_base_shapes") and not os.environ.get("VAVAM_MUP_SHAPES_DIR"):
+            raise RuntimeError(
+                "this bundle was trained against VaVAM with muP base shapes; set "
+                "VAVAM_MUP_SHAPES_DIR (patches/alpasim/0005) so the driver loads it the same way"
+            )
         super().__init__(
             checkpoint_path=bundle["vavam_checkpoint"],
             tokenizer_path=tokenizer_path,
