@@ -209,3 +209,45 @@ val, val_cl, test, test_cl and eval_big stay out of all training data.
   step 15 the ego is 0.1–0.2 m from the lead car in all of them. The split is
   a knife-edge near-collision, not a parity bug. Single smoke runs cannot be
   compared; only matched multi-scene evaluations can.
+
+
+## Finding: AlpaSim runs VaVAM-B with a 4× flow velocity (muP base shapes dropped)
+
+While checking the SFT loss (stock VaVAM-B scored 9.4 on human futures and
+8.6 even on its own samples, worse than predicting zero), the velocity field
+turned out to be 4× too large. AlpaSim's `load_inference_VAM` sets
+`gpt_mup_base_shapes` / `action_mup_base_shapes` to `None`, but the
+checkpoint was trained with `mup_shapes/actionexpert_24layers_baseattentiondim256_baseembeddingdim64.bsh`
+and `gpt2_24layers_basewidth256.bsh` (valeoai/VideoActionModel `738050ec70`,
+the same commit as the installed `vam`). Without them muP's readout width
+multiplier is 1 instead of 4 (action width 256 / base 64).
+
+Expert-replay windows (train scenes, 8-frame context; `metadrive_ais.models.vavam_loading`):
+
+| | AlpaSim loader | with base shapes |
+|---|---|---|
+| velocity at t=0 (noise scale 0.77) | 3.10 | **0.77** |
+| flow loss on human futures | 8.77 | **0.018** |
+| open-loop single-sample ADE / FDE | 2.72 / 4.89 m | 3.20 / 5.74 m |
+
+The model as trained fits human driving very well (flow loss 0.018). The
+inflated velocity collapses sampling toward the conditional mean, which
+lowers single-sample ADE but is not the model as trained.
+
+Consequences:
+- `patches/alpasim/0005`: `VAVAM_MUP_SHAPES_DIR` makes AlpaSim load the base
+  shapes (unset = AlpaSim's original behaviour). Files:
+  `~/ext/alpasim/data/drivers/vavam/mup_shapes/`.
+- All M1 results describe **VaVAM-B as shipped by AlpaSim** (mis-scaled).
+- The first SFT smoke run (`runs/sft/smoke_gru`) trained against the
+  mis-scaled model and is void. Flow SFT now loads VaVAM with the base shapes.
+- VaVAM-AIS bundles record this and the driver refuses to run them without
+  `VAVAM_MUP_SHAPES_DIR`.
+- The M2 collections in progress use the as-shipped VaVAM as the behaviour
+  policy. That is fine for representation learning (observations, executed
+  actions, outcomes), but they are not on-policy for the corrected model.
+
+**Corrected baselines (declared before running):** B0a\* and B0b\*, the M1
+protocol (val_cl, 2 rollouts, CATK, 4 s replay, route commands) with
+`VAVAM_MUP_SHAPES_DIR` set. These become the reference for every AIS
+comparison. The as-shipped M1 results stay as a separate row.
