@@ -36,8 +36,13 @@ def main() -> None:
                 print(f"[{name}] have {scene['scene_id']}")
                 continue
             staging = out_dir / ".staging"
-            path = hf_hub_download(REPO, scene["hf_path"], repo_type="dataset",
-                                   revision=scene["hf_revision"], local_dir=staging)
+            path = hf_hub_download(
+                REPO,
+                scene["hf_path"],
+                repo_type="dataset",
+                revision=scene["hf_revision"],
+                local_dir=staging,
+            )
             Path(path).rename(target)
             shutil.rmtree(staging)
             print(f"[{name}] downloaded {scene['scene_id']} ({target.stat().st_size / 1e9:.2f} GB)")

@@ -47,6 +47,58 @@ early (progress 0.04 / 0.06). VaVAM-B loads in ~10 s; a 50 s episode takes
 - 16 scenes resolve only large effects (§7); a null result here is not
   evidence of no effect. test_cl and eval_big stay untouched.
 
+**Result of the pre-declared comparison** (`reports/m1_b0a_b0b_valcl.md`;
+logs, metrics and 63 MP4s in `runs/vavam/m1/{b0a,b0b}/sim/`):
+
+| | B0a (1 frame) | B0b (8 frames) | paired B0b − B0a (16 scenes) |
+|---|---|---|---|
+| rollouts | 31 of 32 | 32 of 32 | |
+| score | 0.352 [0.142, 0.568] | 0.231 [0.063, 0.421] | −0.121 [−0.389, +0.156] |
+| pass rate | 0.41 | 0.38 | −0.03 |
+| offroad | **0.41** | **0.53** | +0.125 [−0.219, +0.438] |
+| at-fault collision | 0.19 | 0.13 | −0.063 [−0.25, +0.125] |
+| progress | 0.61 | 0.42 | **−0.19 [−0.32, −0.06]** |
+| distance | 102 m | 70 m | **−31 m [−52, −11]** |
+
+- **Context length does not resolve on score.** Native 8-frame VaVAM-B makes
+  significantly less progress and drives shorter distances; score, offroad and
+  collision differences are within noise on 16 scenes.
+- **One B0a rollout is missing.** Scene `81a1d7cc` failed three times in
+  physics ("There are only 0 points in 3 dimensions": no ground mesh under the
+  ego), i.e. the policy drove off the reconstructed area. This is a
+  policy-dependent loss, not a CATK abort. The launch script lacked
+  `eval.allow_aggregation_with_failed_rollouts=True`, so B0a was aggregated
+  afterwards with `alpasim-aggregation` and that flag
+  (`runs/vavam/m1/b0a/eval-config-allow-failed.yaml`).
+- The two rollouts per scene are nearly identical: CATK adds little variance
+  for this policy.
+- **GPU profile**: one stack per GPU (renderer + VaVAM driver + physics + CATK)
+  peaked at 12.8 GiB (B0a) / 15.8 GiB (B0b), mean utilisation 12% / 38%;
+  32 rollouts took 13 / 18 min. Several VaVAM stacks fit per GPU.
+
+**Failure taxonomy: offroad dominates (41–53%), with a rightward bias.**
+- Videos: on straight roads with command STRAIGHT the planned trajectory
+  veers right toward the road edge (`4e05c75c`, `81a1d7cc`, `561c5a26`,
+  `e244984f`). At a highway exit (`e244984f`) the route-derived command
+  switches to RIGHT and VaVAM turns sharply off the road, as it would at an
+  intersection. AlpaSim derives commands from a 3 m lateral offset 20 m ahead.
+- **Not a pipeline error**: the preset camera points straight ahead (yaw
+  −0.15°, pitch −0.38°); VaVAM's trajectories use x forward, y left
+  (`vam.datalib.ego_trajectory_dataset`), as AlpaSim assumes; the command map
+  (RIGHT 0, LEFT 1, STRAIGHT 2) matches; pinhole rendering is validated (above).
+- **Open loop on the human path** (`metadrive_ais.evaluation.forced_replay`,
+  driver queries during the 4 s forced replay, B0a, 62 predictions over 3 s):
+  the final waypoint is 0.44 m right of the human (median), 79% of predictions
+  right; longitudinal error is unbiased (median +0.17 m).
+- **Mirror test** (`scripts/vavam_mirror_probe.py`, 248 logged frames, same
+  command and noise): as logged, median −0.29 m, 81% right; mirrored left-right,
+  median −0.11 m, 69% right; correlation(y, −y_mirrored) = 0.74. Most of the
+  bias follows the image content, and a smaller part (about −0.2 to −0.4 m
+  at 3 s) is a model prior that survives mirroring.
+- Implication for M3: the dominant failure is lateral, not memory-related.
+  AIS memory can only help if history carries lateral information (e.g.
+  executed drift); report lateral error separately in all ablations.
+
 ## AIS conditioning interface in VaVAM-B (brief step 4)
 
 Read from the pinned `vam` 1.0.0 code and the VaVAM-B checkpoint (AlpaSim's
