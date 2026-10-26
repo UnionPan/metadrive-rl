@@ -272,3 +272,17 @@ rollouts each, no failures):
   −0.44 m (79%) as shipped (`forced_replay`). B0a\* also predicts slower
   driving (longitudinal median −2.5 m).
 - B0a\* and B0b\* replace B0a/B0b as the reference for all AIS comparisons.
+
+**M2 datasets built** (`data/episodes/`, DINOv3-S features, VQ tokens):
+`train_b0b_catk` 124 episodes / 4,836 steps / 62 scenes;
+`train_b0a_catk` 119 / 4,641 / 60; `train_expert_replay` 62 / 2,418 / 62.
+Closed-loop policy steps: offroad 0.19 / 0.16, collision 0.10 / 0.09.
+Failures: the two broken-route scenes (`1e720496`, `387a9a98`) plus
+occasional failed attempts on `577a5904`, `a72b3cac`, `623d5516`.
+
+**M2 representation comparison (declared before running):**
+frame (no memory), stack-4 and GRU memory, identical heads and training,
+trained on `train_b0b_catk` + `train_b0a_catk`, the same 12 held-out train
+scenes, 3 seeds each, 300 epochs, best epoch by held-out total loss.
+Primary metrics: held-out next-step collision and offroad AUROC, and
+next-embedding NLL. Memory helps only if GRU/stack beat frame beyond the seed spread.
