@@ -152,3 +152,20 @@ Diagnostic: rerun B0a and B0b on val_cl, 2 rollouts, CATK, 4 s replay, with
 offroad and score against M1 on matched scenes. This tests the command
 channel only. It is not a candidate baseline: scenes with genuine turns need
 commands.
+
+## M2 — dataset and AIS representation (in progress)
+
+**Built:** episode recorder (`metadrive_ais.data.episodes`, leakage test) and
+frozen DINOv3 feature cache (`metadrive_ais.vision`; DINOv3-S
+`facebook/dinov3-vits16-pretrain-lvd1689m` rev `114c1379`, 448×256,
+[CLS, mean], 768-d, fp16; 52 frames/s on one RTX 8000).
+
+**Collection (declared 2026-10-26), train split only (64 scenes):**
+1. `train_b0b_catk`: stock VaVAM-B B0b (8 frames, preset route commands),
+   CATK, 2 rollouts per scene: on-policy states, executed actions and
+   per-step outcomes for the reward and next-observation objectives.
+2. `train_expert_replay`: the whole episode forced along the human path
+   (VaVAM-B B0b still queried), 1 rollout per scene: frames along the human
+   path and the human future trajectory as flow-matching SFT targets.
+
+val, val_cl, test, test_cl and eval_big stay out of all training data.
