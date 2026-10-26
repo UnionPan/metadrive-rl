@@ -8,7 +8,9 @@ trajectory the driver issued at ``t`` (rig frame). Targets are next-step
 outcomes and the next embedding ``e_{t+1}``; they are never inputs.
 
 Steps without an issued trajectory (e.g. while an 8-frame context fills) keep
-their observation but are masked out of the losses.
+their observation but are masked out of the losses. Episodes end at their first
+incident (collision or offroad), as AlpaSim's scoring does: that step is kept as
+the last target; later states are outside the evaluated task.
 """
 
 from __future__ import annotations
@@ -65,13 +67,22 @@ def _next(g: pl.DataFrame, col: str) -> np.ndarray:
     return np.append(v[1:], np.nan).astype(np.float32)
 
 
-def episodes_from_table(steps: pl.DataFrame, embeddings: np.ndarray) -> list[Episode]:
+def episodes_from_table(
+    steps: pl.DataFrame, embeddings: np.ndarray, truncate_after_incident: bool = True
+) -> list[Episode]:
     """Split an episode table (``metadrive_ais.data.episodes``) into sequences."""
     steps = steps.with_row_index("_row")
     out = []
     for (episode_id,), g in steps.sort("episode_id", "step").group_by(
         "episode_id", maintain_order=True
     ):
+        if truncate_after_incident:
+            incident = (
+                (g["outcome_collision_any"].fill_null(0) > 0)
+                | (g["outcome_offroad"].fill_null(0) > 0)
+            ).to_numpy()
+            if incident.any():
+                g = g.head(int(incident.argmax()) + 1)
         rows = g["_row"].to_numpy()
         actions = [_action(a) for a in g["issued_xy"].to_list()]
 

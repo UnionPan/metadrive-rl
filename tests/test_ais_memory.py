@@ -86,3 +86,26 @@ def test_episodes_from_table_motion_and_targets():
     assert ep.progress_gain[:2] == pytest.approx([0.1, 0.2])
     batch = collate([ep, ep])
     assert batch["embed"].shape == (2, 3, 4) and batch["has_action"].sum() == 4
+
+
+def test_episode_ends_at_first_incident():
+    n = 5
+    steps = pl.DataFrame(
+        {
+            "episode_id": ["a"] * n,
+            "scene_id": ["s"] * n,
+            "step": list(range(n)),
+            "time_us": [i * 500_000 for i in range(n)],
+            "ego_x": [float(i) for i in range(n)],
+            "ego_y": [0.0] * n,
+            "ego_yaw": [0.0] * n,
+            "issued_xy": [[[0.0, 0.0]] + [[float(k), 0.0] for k in range(1, 7)]] * n,
+            "outcome_collision_any": [0.0] * n,
+            "outcome_offroad": [0.0, 0.0, 1.0, 0.0, 1.0],  # back on the road at step 3
+            "outcome_progress": [0.1 * i for i in range(n)],
+        }
+    )
+    (ep,) = episodes_from_table(steps, np.zeros((n, 4), dtype=np.float32))
+    assert len(ep.embed) == 3 and ep.offroad_next[1] == 1.0 and np.isnan(ep.offroad_next[2])
+    (full,) = episodes_from_table(steps, np.zeros((n, 4), dtype=np.float32), False)
+    assert len(full.embed) == n
