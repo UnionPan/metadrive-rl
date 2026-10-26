@@ -1,0 +1,26 @@
+diff --git a/src/driver/src/alpasim_driver/main.py b/src/driver/src/alpasim_driver/main.py
+index 9013bf2..2c95ab4 100644
+--- a/src/driver/src/alpasim_driver/main.py
++++ b/src/driver/src/alpasim_driver/main.py
+@@ -724,6 +724,7 @@ class EgoDriverService(EgodriverServiceServicer):
+                     inference_seed=inference_seed,
+                     previous_plan=job.session.last_selected_plan,
+                     route=job.session.route,
++                    session_uuid=getattr(job.session, "uuid", None),
+                 )
+             )
+ 
+diff --git a/src/driver/src/alpasim_driver/models/base.py b/src/driver/src/alpasim_driver/models/base.py
+index a39a852..ca2ff0c 100644
+--- a/src/driver/src/alpasim_driver/models/base.py
++++ b/src/driver/src/alpasim_driver/models/base.py
+@@ -64,6 +64,9 @@ class PredictionInput:
+     # at the route's own timestamp.  None until the first route arrives, and
+     # for scenarios that run without a route.
+     route: Any | None  # Route
++    # Session this input belongs to, so stateful models (e.g. recurrent memory)
++    # can keep per-session state. None when built outside the driver server.
++    session_uuid: str | None = None
+ 
+ 
+ @dataclass
