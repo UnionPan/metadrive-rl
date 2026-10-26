@@ -4,6 +4,7 @@ Needs a GPU, the AlpaSim venv, the VaVAM-B assets, DINOv3-S access and the M1
 episode frames (``data/episodes/m1``); skipped otherwise.
 """
 
+import json
 import os
 from pathlib import Path
 
@@ -29,6 +30,7 @@ pytestmark = pytest.mark.skipif(
 
 from metadrive_ais.drivers.vavam_ais import VaVAMAISModel, save_bundle  # noqa: E402
 from metadrive_ais.memory.ais import MemoryEncoder  # noqa: E402
+from metadrive_ais.models.latent_policy import LatentChannel  # noqa: E402
 from metadrive_ais.models.vavam_conditioning import GatedAdapter  # noqa: E402
 
 CAM = "camera_front_wide_120fov"
@@ -103,3 +105,30 @@ def test_sessions_are_isolated_and_memory_matters(models):
     finally:
         with torch.no_grad():
             ais._adapter.gate.zero_()
+
+
+def test_latent_draws_are_reproducible_and_logged(models, tmp_path):
+    """Seeded per session and query; the logged log q is recomputable from (z, c)."""
+    _, ais = models
+    torch.manual_seed(0)
+    latent = LatentChannel(256, latent_dim=4).to(ais._device).eval()
+    with torch.no_grad():
+        latent.decoder.proj.weight.mul_(20.0)  # make the latent visibly steer
+    log = tmp_path / "latent.jsonl"
+    ais._latent, ais._latent_log, ais._latent_mode = latent, str(log), "sample"
+    try:
+        first = [_run(ais, [_input([FRAMES[i]], i, "s-latent")])[0] for i in range(3)]
+        del ais._sessions["s-latent"]
+        again = [_run(ais, [_input([FRAMES[i]], i, "s-latent")])[0] for i in range(3)]
+        assert all(np.array_equal(x, y) for x, y in zip(first, again, strict=True))
+        other = _run(ais, [_input([FRAMES[0]], 0, "s-other")])[0]
+        assert not np.array_equal(other, first[0])  # same frame, different latent draw
+        records = [json.loads(line) for line in log.read_text().splitlines()]
+        assert [r["query"] for r in records[:3]] == [0, 1, 2]
+        assert records[0]["c"] == records[3]["c"] and records[0]["c"] != records[1]["c"]
+        for r in records:
+            dist = latent.prior(torch.tensor(r["z"], device=ais._device))
+            logp = dist.log_prob(torch.tensor(r["c"], device=ais._device)).sum()
+            assert abs(float(logp) - r["logp"]) < 1e-4
+    finally:
+        ais._latent, ais._latent_log = None, None

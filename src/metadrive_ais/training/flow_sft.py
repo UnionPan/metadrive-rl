@@ -16,6 +16,12 @@ the human future (ADE, FDE, signed lateral error), next to the zero-gate
 Usage:
     python -m metadrive_ais.training.flow_sft --data data/episodes/<expert>/steps.parquet \\
         --memory gru --out runs/sft/<name> [--ais-weight 0.5] [--epochs 20]
+        [--latent-dim 4 --kl-weight 0.01]  # M5a latent action channel
+
+With ``--latent-dim``, a latent action ``c_t`` adds ``W_c c_t`` to the adapter
+residual (``metadrive_ais.models.latent_policy``). Training samples ``c_t`` from
+the posterior given the human future and adds ``kl_weight * KL(posterior ||
+prior)``; evaluation and deployment sample from the prior, the policy RL trains.
 """
 
 from __future__ import annotations
@@ -31,6 +37,7 @@ import torch
 
 from metadrive_ais.memory.ais import KINDS, AISHeads, MemoryEncoder, ais_losses
 from metadrive_ais.memory.sequences import Episode, collate, episodes_from_table
+from metadrive_ais.models.latent_policy import LatentChannel
 from metadrive_ais.models.vavam_conditioning import GatedAdapter, attach_conditioning
 
 CONTEXT, HORIZON = 8, 6
@@ -99,7 +106,13 @@ def windows(episodes: list[ExpertEpisode]) -> list[tuple[int, int]]:
 
 class Trainer:
     def __init__(
-        self, vam, memory: MemoryEncoder, adapter: GatedAdapter, heads: AISHeads | None, device
+        self,
+        vam,
+        memory: MemoryEncoder,
+        adapter: GatedAdapter,
+        heads: AISHeads | None,
+        device,
+        latent: LatentChannel | None = None,
     ):
         self.vam, self.memory, self.adapter, self.heads, self.device = (
             vam,
@@ -108,13 +121,44 @@ class Trainer:
             heads,
             device,
         )
+        self.latent = latent
         self.conditioner = attach_conditioning(vam)
+
+    def latent_residual(self, z, future, mode: str, generator=None):
+        """(W_c c, KL(posterior || prior) per step) for states z [..., S], futures [..., 6, 2].
+
+        mode: ``posterior`` (reparameterised sample), ``posterior_mean``, ``prior``
+        (sample, the deployed policy) or ``prior_mean``.
+        """
+        prior = self.latent.prior(z)
+        post = self.latent.posterior(z, future)
+        if mode == "posterior":
+            c = post.rsample()
+        elif mode == "posterior_mean":
+            c = post.mean
+        elif mode == "prior":
+            noise = torch.randn(prior.mean.shape, generator=generator, device=z.device)
+            c = prior.mean + prior.stddev * noise
+        elif mode == "prior_mean":
+            c = prior.mean
+        else:
+            raise ValueError(mode)
+        kl = torch.distributions.kl_divergence(post, prior).sum(-1)
+        return self.latent.decoder(c), kl
 
     def states(self, episodes: list[ExpertEpisode]) -> torch.Tensor:
         batch = collate([e.seq for e in episodes], self.device)
         return self.memory(batch["embed"], batch["motion"]), batch
 
-    def flow_loss(self, episodes, wins, t_values=None, gate_zero=False):
+    def flow_loss(
+        self,
+        episodes,
+        wins,
+        t_values=None,
+        gate_zero=False,
+        latent_mode="posterior",
+        latent_generator=None,
+    ):
         """Mean flow-matching loss over windows (one VaVAM forward per batch)."""
         eps = sorted({i for i, _ in wins})
         z, seq_batch = self.states([episodes[i] for i in eps])
@@ -131,7 +175,12 @@ class Trainer:
         cmd = torch.stack(cmd).to(self.device)
         act = torch.stack(act).to(self.device)
         t = t_values if t_values is not None else torch.rand(len(wins), CONTEXT, device=self.device)
-        self.conditioner.delta = None if gate_zero else torch.stack(delta)
+        delta, kl = torch.stack(delta), None
+        if self.latent is not None and not gate_zero:
+            zw = torch.stack([z[pos[i], end - CONTEXT + 1 : end + 1] for i, end in wins])
+            extra, kl = self.latent_residual(zw, act, latent_mode, latent_generator)
+            delta = delta + extra
+        self.conditioner.delta = None if gate_zero else delta
         try:
             with torch.autocast("cuda", dtype=torch.float16):
                 loss = type(self.vam).__mro__[1].forward(self.vam, tok, cmd, act, t)
@@ -140,11 +189,19 @@ class Trainer:
         aux = {}
         if self.heads is not None:
             aux = ais_losses(self.heads(z, seq_batch["action"]), seq_batch, self.heads.embed_norm)
+        if kl is not None:
+            aux["kl"] = kl.mean()
         return loss.float(), aux
 
     @torch.no_grad()
-    def sample(self, episodes, wins, gate_zero=False, seed=0):
-        """Open-loop trajectory at each window's last step: (N, 6, 2)."""
+    def sample(
+        self, episodes, wins, gate_zero=False, seed=0, latent_mode="prior", latent_seed=None
+    ):
+        """Open-loop trajectory at each window's last step: (N, 6, 2).
+
+        ``seed`` drives VaVAM's flow noise; ``latent_seed`` (default ``seed``) the
+        latent sample, so latents can vary while the flow noise stays fixed.
+        """
         eps = sorted({i for i, _ in wins})
         z, _ = self.states([episodes[i] for i in eps])
         pos = {i: k for k, i in enumerate(eps)}
@@ -156,6 +213,13 @@ class Trainer:
         ).to(self.device)
         cmd = torch.tensor([[episodes[i].command[end]] for i, end in wins], device=self.device)
         delta = torch.stack([self.adapter(z[pos[i], end]) for i, end in wins])[:, None]
+        if self.latent is not None and not gate_zero:
+            zl = torch.stack([z[pos[i], end] for i, end in wins])
+            fut = torch.stack([torch.from_numpy(episodes[i].future[end]) for i, end in wins])
+            g = torch.Generator(device=self.device)
+            g.manual_seed(seed if latent_seed is None else latent_seed)
+            extra, _ = self.latent_residual(zl, fut.to(self.device), latent_mode, generator=g)
+            delta = delta + extra[:, None]
         self.conditioner.delta = None if gate_zero else delta
         try:
             torch.manual_seed(seed)
@@ -185,26 +249,76 @@ def open_loop_report(pred: np.ndarray, truth: np.ndarray) -> dict:
 def evaluate(trainer: Trainer, episodes, wins, batch: int = 8) -> dict:
     trainer.memory.eval(), trainer.adapter.eval()
     g = torch.Generator(device=trainer.device).manual_seed(0)
+    # Prior latents (the deployed policy) from their own stream: VaVAM's flow noise
+    # stays the same as in the zero-gate pass.
+    gl = torch.Generator(device=trainer.device).manual_seed(1)
     flow, flow0, preds, preds0, truth = [], [], [], [], []
     for k in range(0, len(wins), batch):
         w = wins[k : k + batch]
         t = torch.rand(len(w), CONTEXT, generator=g, device=trainer.device)
         with torch.no_grad():
             torch.manual_seed(k)
-            flow.append(trainer.flow_loss(episodes, w, t)[0].item() * len(w))
+            loss = trainer.flow_loss(episodes, w, t, latent_mode="prior", latent_generator=gl)[0]
+            flow.append(loss.item() * len(w))
             torch.manual_seed(k)
             flow0.append(trainer.flow_loss(episodes, w, t, gate_zero=True)[0].item() * len(w))
         preds.append(trainer.sample(episodes, w, seed=k))
         preds0.append(trainer.sample(episodes, w, gate_zero=True, seed=k))
         truth.append(np.stack([episodes[i].future[end] for i, end in w]))
     preds, preds0, truth = map(np.concatenate, (preds, preds0, truth))
-    return {
+    report = {
         "windows": len(wins),
         "flow_loss": sum(flow) / len(wins),
         "flow_loss_zero_gate": sum(flow0) / len(wins),
         "open_loop": open_loop_report(preds, truth),
         "open_loop_zero_gate": open_loop_report(preds0, truth),
         "gate": float(trainer.adapter.gate),
+    }
+    if trainer.latent is not None:
+        report.update(evaluate_latent(trainer, episodes, wins, batch))
+    return report
+
+
+@torch.no_grad()
+def evaluate_latent(trainer: Trainer, episodes, wins, batch: int, samples: int = 8) -> dict:
+    """Posterior fit and how much the prior's latents move the trajectory.
+
+    ``flow_loss`` and ``open_loop`` above already use prior samples (the deployed
+    policy). Here: the same with the posterior mean (how much the channel can
+    steer toward the human future), the KL, and the spread of the final waypoint
+    over ``samples`` prior latents with VaVAM's flow noise held fixed.
+    """
+    g = torch.Generator(device=trainer.device).manual_seed(0)
+    flow, kl, preds, truth = [], [], [], []
+    for k in range(0, len(wins), batch):
+        w = wins[k : k + batch]
+        t = torch.rand(len(w), CONTEXT, generator=g, device=trainer.device)
+        torch.manual_seed(k)
+        loss, aux = trainer.flow_loss(episodes, w, t, latent_mode="posterior_mean")
+        flow.append(loss.item() * len(w))
+        kl.append(aux["kl"].item() * len(w))
+        preds.append(trainer.sample(episodes, w, seed=k, latent_mode="posterior_mean"))
+        truth.append(np.stack([episodes[i].future[end] for i, end in w]))
+    sub = wins[: 8 * batch]
+    final = np.stack(
+        [
+            np.concatenate(
+                [
+                    trainer.sample(episodes, sub[k : k + batch], seed=k, latent_seed=1000 + j)
+                    for k in range(0, len(sub), batch)
+                ]
+            )[:, -1]
+            for j in range(samples)
+        ]
+    )  # (samples, N, 2)
+    dev = final - final.mean(0)
+    return {
+        "flow_loss_posterior": sum(flow) / len(wins),
+        "kl": sum(kl) / len(wins),
+        "open_loop_posterior": open_loop_report(np.concatenate(preds), np.concatenate(truth)),
+        "latent_spread_final_m": float(np.sqrt((dev**2).sum(-1).mean(0)).mean()),
+        "latent_spread_longitudinal_m": float(dev[..., 0].std(0).mean()),
+        "latent_spread_lateral_m": float(dev[..., 1].std(0).mean()),
     }
 
 
@@ -222,6 +336,8 @@ def main() -> None:
     parser.add_argument(
         "--ais-weight", type=float, default=0.0, help="AIS auxiliary losses (B4 > 0, B3 = 0)"
     )
+    parser.add_argument("--latent-dim", type=int, default=0, help="M5a latent action channel")
+    parser.add_argument("--kl-weight", type=float, default=0.01)
     parser.add_argument("--holdout-scenes", type=int, default=12)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch", type=int, default=8)
@@ -252,10 +368,13 @@ def main() -> None:
     memory.requires_grad_(not args.freeze_memory)
     adapter = GatedAdapter(memory.state_dim).to(device)
     heads = AISHeads(memory.state_dim, dim).to(device) if args.ais_weight > 0 else None
-    trainer = Trainer(vam, memory, adapter, heads, device)
+    latent = (
+        LatentChannel(memory.state_dim, args.latent_dim).to(device) if args.latent_dim else None
+    )
+    trainer = Trainer(vam, memory, adapter, heads, device, latent)
     params = [
         p
-        for m in (memory, adapter, heads)
+        for m in (memory, adapter, heads, latent)
         if m is not None
         for p in m.parameters()
         if p.requires_grad
@@ -271,11 +390,16 @@ def main() -> None:
     rng = np.random.default_rng(args.seed)
     for epoch in range(1, args.epochs + 1):
         memory.train(not args.freeze_memory), adapter.train()
+        if latent is not None:
+            latent.train()
         order = rng.permutation(len(train_w))
         for k in range(0, len(order), args.batch):
             w = [train_w[j] for j in order[k : k + args.batch]]
             loss, aux = trainer.flow_loss(train_eps, w)
+            kl = aux.pop("kl", None)
             total = loss + args.ais_weight * sum(aux.values()) if aux else loss
+            if kl is not None:
+                total = total + args.kl_weight * kl
             opt.zero_grad()
             scaler.scale(total).backward()
             scaler.unscale_(opt)
@@ -290,6 +414,11 @@ def main() -> None:
                 {
                     "memory": {"config": memory.config, "state_dict": memory.state_dict()},
                     "adapter": adapter.state_dict(),
+                    **(
+                        {"latent": {"config": latent.config, "state_dict": latent.state_dict()}}
+                        if latent is not None
+                        else {}
+                    ),
                     "feature_encoder": args.encoder,
                     "epoch": epoch,
                 },

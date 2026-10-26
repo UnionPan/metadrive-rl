@@ -11,10 +11,18 @@ compute the executed ego motion since the session's previous query (u_{t-1},
 as in :mod:`metadrive_ais.memory.sequences`), advance the memory (z_t), set
 the adapter's residual on VaVAM's action tokens, and run VaVAM's stock
 inference. Needs the session id (``patches/alpasim/0004``).
+
+Bundles with a latent action channel (M5a, :mod:`metadrive_ais.models.latent_policy`)
+also sample ``c_t ~ q_phi(c | z_t)`` per query and add ``W_c c_t``. The draw is
+seeded by session and query index. ``VAVAM_AIS_LATENT=mean`` uses the prior mean
+instead. With ``VAVAM_AIS_LATENT_LOG=<file>``, every query appends one JSON line
+(session, time, z_t, c_t, log q, seed, policy version) for the RL update.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from collections import OrderedDict
 from typing import Any
@@ -25,6 +33,7 @@ from alpasim_driver.models.base import ModelPrediction, PredictionInput
 from alpasim_driver.models.vam_model import VAMModel
 
 from metadrive_ais.memory.ais import MemoryEncoder
+from metadrive_ais.models.latent_policy import LatentChannel
 from metadrive_ais.models.vavam_conditioning import GatedAdapter, attach_conditioning
 from metadrive_ais.vision.encoders import FrozenEncoder
 
@@ -33,10 +42,22 @@ MAX_SESSIONS = 256
 
 
 def save_bundle(
-    path, vavam_checkpoint: str, feature_encoder: str, memory: MemoryEncoder, adapter: GatedAdapter
+    path,
+    vavam_checkpoint: str,
+    feature_encoder: str,
+    memory: MemoryEncoder,
+    adapter: GatedAdapter,
+    latent: LatentChannel | None = None,
+    policy_version: int = 0,
 ) -> None:
     torch.save(
         {
+            **(
+                {"latent": {"config": latent.config, "state_dict": latent.state_dict()}}
+                if latent is not None
+                else {}
+            ),
+            "policy_version": policy_version,
             "format": BUNDLE_FORMAT,
             "vavam_checkpoint": str(vavam_checkpoint),
             # Trained against VaVAM with its muP base shapes (patches/alpasim/0005).
@@ -71,6 +92,11 @@ def executed_motion(prev, cur) -> list[float]:
     return [c * dx + s * dy, -s * dx + c * dy, dyaw, dt, float(np.hypot(dx, dy) / dt)]
 
 
+def latent_seed(session_uuid: str, query: int) -> int:
+    """Seed of the latent draw at one query: reproducible, distinct per session and query."""
+    return int(hashlib.sha256(f"{session_uuid}/{query}".encode()).hexdigest()[:15], 16)
+
+
 class VaVAMAISModel(VAMModel):
     def __init__(
         self,
@@ -101,6 +127,15 @@ class VaVAMAISModel(VAMModel):
         a = bundle["adapter"]
         self._adapter = GatedAdapter(a["state_dim"], a["token_dim"]).to(device).eval()
         self._adapter.load_state_dict(a["state_dict"])
+        self._latent = None
+        if "latent" in bundle:
+            self._latent = LatentChannel(**bundle["latent"]["config"]).to(device).eval()
+            self._latent.load_state_dict(bundle["latent"]["state_dict"])
+        self._latent_mode = os.environ.get("VAVAM_AIS_LATENT", "sample")
+        if self._latent_mode not in ("sample", "mean"):
+            raise ValueError(f"VAVAM_AIS_LATENT={self._latent_mode!r}: expected sample or mean")
+        self._latent_log = os.environ.get("VAVAM_AIS_LATENT_LOG")
+        self._policy_version = int(bundle.get("policy_version", 0))
         self._sessions: OrderedDict[str, dict] = OrderedDict()
 
     @classmethod
@@ -119,6 +154,7 @@ class VaVAMAISModel(VAMModel):
             self._sessions[uuid] = {
                 "state": self._memory.initial_state(1, self._device)[0],
                 "pose": None,
+                "queries": 0,
             }
         self._sessions.move_to_end(uuid)
         return self._sessions[uuid]
@@ -144,7 +180,46 @@ class VaVAMAISModel(VAMModel):
         z, new_state = self._memory.step(state, embed, motion)
         for s, st, p in zip(sessions, new_state, poses, strict=True):
             s["state"], s["pose"] = st, p
-        return self._adapter(z)  # [B, token_dim]
+        residual = self._adapter(z)  # [B, token_dim]
+        if self._latent is not None:
+            residual = residual + self._latent_residual(inputs, sessions, z)
+        for s in sessions:
+            s["queries"] += 1
+        return residual
+
+    def _latent_residual(self, inputs, sessions, z: torch.Tensor) -> torch.Tensor:
+        dist = self._latent.prior(z)
+        seeds = [
+            latent_seed(inp.session_uuid, s["queries"])
+            for inp, s in zip(inputs, sessions, strict=True)
+        ]
+        if self._latent_mode == "mean":
+            c = dist.mean
+        else:
+            noise = torch.stack(
+                [
+                    torch.randn(dist.mean.shape[-1], generator=torch.Generator().manual_seed(seed))
+                    for seed in seeds
+                ]
+            ).to(self._device)
+            c = dist.mean + dist.stddev * noise
+        logp = dist.log_prob(c).sum(-1)
+        if self._latent_log:
+            with open(self._latent_log, "a") as f:
+                for i, inp in enumerate(inputs):
+                    record = {
+                        "session": inp.session_uuid,
+                        "query": sessions[i]["queries"],
+                        "time_us": int(inp.ego_pose_history[-1].timestamp_us),
+                        "z": z[i].tolist(),
+                        "c": c[i].tolist(),
+                        "logp": float(logp[i]),
+                        "seed": seeds[i],
+                        "mode": self._latent_mode,
+                        "policy_version": self._policy_version,
+                    }
+                    f.write(json.dumps(record) + "\n")
+        return self._latent.decoder(c)
 
     def predict_batch(self, prediction_inputs: list[PredictionInput]) -> list[ModelPrediction]:
         if not prediction_inputs:
@@ -163,7 +238,11 @@ def bundle_from_sft(sft_checkpoint, out, vavam_checkpoint) -> None:
     memory.load_state_dict(ckpt["memory"]["state_dict"])
     adapter = GatedAdapter(memory.state_dim)
     adapter.load_state_dict(ckpt["adapter"])
-    save_bundle(out, vavam_checkpoint, ckpt["feature_encoder"], memory, adapter)
+    latent = None
+    if "latent" in ckpt:
+        latent = LatentChannel(**ckpt["latent"]["config"])
+        latent.load_state_dict(ckpt["latent"]["state_dict"])
+    save_bundle(out, vavam_checkpoint, ckpt["feature_encoder"], memory, adapter, latent)
 
 
 if __name__ == "__main__":
