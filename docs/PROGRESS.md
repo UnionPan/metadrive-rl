@@ -251,3 +251,24 @@ Consequences:
 protocol (val_cl, 2 rollouts, CATK, 4 s replay, route commands) with
 `VAVAM_MUP_SHAPES_DIR` set. These become the reference for every AIS
 comparison. The as-shipped M1 results stay as a separate row.
+
+**Corrected baselines result** (`reports/m1_corrected_baselines.md`; 32/32
+rollouts each, no failures):
+
+| | B0a (shipped) | B0a\* | B0b (shipped) | B0b\* |
+|---|---|---|---|---|
+| score | 0.352 | 0.437 | 0.231 | 0.247 |
+| pass rate | 0.41 | 0.44 | 0.38 | 0.28 |
+| offroad | 0.41 | 0.44 | 0.53 | 0.53 |
+| at-fault collision | 0.19 | 0.13 | 0.13 | 0.22 |
+| progress | 0.61 | 0.63 | 0.42 | 0.52 |
+
+- Paired corrected − shipped: B0a score +0.085 [−0.026, +0.24]; B0b score
+  +0.016 [−0.17, +0.22], progress +0.10 [−0.003, +0.20]. Not resolved on 16 scenes.
+- B0b\* − B0a\*: score −0.19 [−0.43, +0.02]; progress **−0.11 [−0.20, −0.03]**.
+  Native 8-frame context still drives less far.
+- **Offroad (44–53%) does not come from the muP bug.** The open-loop rightward
+  bias shrinks but remains: B0a\* final lateral median −0.26 m (72% right) vs
+  −0.44 m (79%) as shipped (`forced_replay`). B0a\* also predicts slower
+  driving (longitudinal median −2.5 m).
+- B0a\* and B0b\* replace B0a/B0b as the reference for all AIS comparisons.
