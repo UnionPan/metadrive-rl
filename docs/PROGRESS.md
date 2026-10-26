@@ -350,3 +350,23 @@ ablation (8 epochs, 12 held-out scenes, 2 seeds). If motion ≈ frame on
 held-out flow loss and ADE (within seed spread), the open-loop gain is the
 speed input, not visual features or memory. Queued on GPUs 0/1 after the
 stack runs.
+
+**M3 closed-loop result (`reports/m3_closed_loop.md`; 32/32 rollouts each):**
+
+| | B0b\* | B1-frame | B3-GRU |
+|---|---|---|---|
+| score | 0.247 | 0.252 | 0.202 |
+| paired score vs B0b\* | | +0.005 [−0.139, +0.132] | −0.045 [−0.228, +0.124] |
+| offroad | 0.53 | 0.50 | 0.53 |
+| progress (paired) | | −0.065 [−0.119, −0.014] | −0.040 [−0.091, +0.006] |
+| planned speed, first 4 s of control | 5.9 m/s | 7.6 | 6.8 |
+
+- No closed-loop gain from either adapter. The open-loop gain (mostly
+  longitudinal) shows up as faster driving, but failures are dominated by
+  offroad (lateral), which expert-replay SFT does not touch.
+- New diagnostic: `metadrive_ais.evaluation.speed_profile` (executed vs
+  planned speed by time since control start).
+- Consequence for the plan: training only on human replays cannot correct
+  VaVAM's own failure states. The next lever is data from VaVAM's closed-loop
+  states: AIS losses on the CATK collections (B4, offroad/collision heads), and
+  then closed-loop RL (M5a) whose reward sees offroad directly.
