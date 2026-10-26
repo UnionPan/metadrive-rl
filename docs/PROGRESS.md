@@ -370,3 +370,16 @@ stack runs.
   VaVAM's own failure states. The next lever is data from VaVAM's closed-loop
   states: AIS losses on the CATK collections (B4, offroad/collision heads), and
   then closed-loop RL (M5a) whose reward sees offroad directly.
+
+## M4 — ablations
+
+**B4 (declared before running, 2026-10-26):** GRU memory trained with the AIS
+losses on closed-loop CATK data (M2 checkpoints `runs/ais/m2_gru_s{0,1}`),
+frozen; only the adapter trains, with the flow loss on expert replay (8
+epochs, the M3 protocol). Seed i uses `m2_gru_s{i}`. M2 and flow-SFT hold out
+the same 12 scenes, so the memory never saw the SFT validation scenes. With
+expert replay, the collision/offroad heads would see almost no positives,
+which is why the AIS objective comes from the CATK data. Compare with B3 (GRU
+trained end-to-end by the flow loss) and B1 (frame): the AIS objective helps
+the action head only if B4 beats B3 on held-out flow loss and ADE beyond the
+seed spread. Caveat: B4 trains fewer parameters (adapter only).
