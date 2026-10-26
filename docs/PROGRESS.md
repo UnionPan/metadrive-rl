@@ -153,6 +153,20 @@ offroad and score against M1 on matched scenes. This tests the command
 channel only. It is not a candidate baseline: scenes with genuine turns need
 commands.
 
+**Result (`reports/m1_command_diagnostic.md`): negative. Route commands are
+not the cause.** With the command fixed to STRAIGHT, offroad goes *up* and
+score *down* on matched scenes:
+
+| | Δ score | Δ offroad | Δ at-fault collision |
+|---|---|---|---|
+| B0a straight − route | −0.075 [−0.231, +0.056] | +0.063 [0, +0.156] | 0 |
+| B0b straight − route | −0.047 [−0.141, 0.000] | +0.156 [0, +0.344] | 0 |
+
+The route-derived commands carry real road geometry (curves, exits). The
+association between RIGHT and offroad was correlational. The failure source
+remains VaVAM-B's rightward bias. **Baselines keep the stock route commands.**
+Scene `81a1d7cc` again fails in physics (no ground under the ego) for B0a.
+
 ## M2 — dataset and AIS representation (in progress)
 
 **Built:** episode recorder (`metadrive_ais.data.episodes`, leakage test) and
