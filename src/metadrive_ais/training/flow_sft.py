@@ -29,7 +29,7 @@ import numpy as np
 import polars as pl
 import torch
 
-from metadrive_ais.memory.ais import AISHeads, MemoryEncoder, ais_losses
+from metadrive_ais.memory.ais import KINDS, AISHeads, MemoryEncoder, ais_losses
 from metadrive_ais.memory.sequences import Episode, collate, episodes_from_table
 from metadrive_ais.models.vavam_conditioning import GatedAdapter, attach_conditioning
 
@@ -214,7 +214,7 @@ def main() -> None:
     )
     parser.add_argument("--data", type=Path, nargs="+", required=True)
     parser.add_argument("--encoder", default="dinov3-small")
-    parser.add_argument("--memory", choices=("frame", "stack", "gru"), default="gru")
+    parser.add_argument("--memory", choices=KINDS, default="gru")
     parser.add_argument(
         "--memory-checkpoint", type=Path, help="AIS memory to start from (memory.train)"
     )

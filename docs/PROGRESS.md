@@ -326,3 +326,27 @@ executed motion, no history), stack-4, GRU}, flow loss only, 8 epochs, the
 same 12 held-out scenes; frame and GRU with 2 seeds, stack with 1. Memory
 helps only if GRU/stack beat frame on held-out flow loss and ADE beyond the
 seed spread. The report now also gives longitudinal error (speed bias).
+
+**M3 closed-loop check (declared before running, 2026-10-26):** do the
+open-loop gains carry over to driving? Bundles from `abl_frame_s0` (best
+epoch 3) and `abl_gru_s0` (best epoch 8), seed 0 fixed in advance (no
+seed picking), converted with `python -m metadrive_ais.drivers.vavam_ais`.
+- Protocol identical to B0b\*: val_cl, 2 rollouts, CATK, 4 s forced replay,
+  route commands, `inference.context_length=8`, `VAVAM_MUP_SHAPES_DIR` set.
+- Primary: paired score vs B0b\* (`summarize --common-scenes --paired`).
+  Secondary: progress (the open-loop gain is mostly longitudinal), offroad,
+  at-fault collision.
+- Checked before launch: the driver's executed motion uses the same poses as
+  training (pose timestamps equal query times, no later poses), and frames are
+  the same JPEG bytes decoded to RGB.
+- 16 scenes resolve only large effects; a null result is not evidence of no
+  effect. test_cl and eval_big stay untouched.
+
+**Motion-only control B1m (declared before running, 2026-10-26):** every
+adapter (B1–B4) receives the executed motion u_{t-1}, which includes speed,
+and VaVAM-B never sees speed. `--memory motion` uses u_{t-1} alone (no DINOv3
+features, no memory) with the same mixer, adapter and protocol as the
+ablation (8 epochs, 12 held-out scenes, 2 seeds). If motion ≈ frame on
+held-out flow loss and ADE (within seed spread), the open-loop gain is the
+speed input, not visual features or memory. Queued on GPUs 0/1 after the
+stack runs.

@@ -3,6 +3,7 @@
 All variants share the observation projection and the heads, so capacity is
 matched and only the history mechanism differs:
 
+- ``motion``: z_t from u_{t-1} only (control: no image features, no memory)
 - ``frame``: z_t from (e_t, u_{t-1}) only (no memory)
 - ``stack``: z_t from the last ``k`` (e, u) pairs (finite memory)
 - ``gru``:   z_t = GRU(z_{t-1}, (e_t, u_{t-1})), reset at every episode start
@@ -19,6 +20,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+KINDS = ("motion", "frame", "stack", "gru")
 MOTION_DIM = 5
 ACTION_DIM = 12
 MOTION_SCALE = torch.tensor([5.0, 1.0, 0.2, 0.5, 15.0])  # rough unit scales
@@ -28,13 +30,14 @@ ACTION_SCALE = 30.0
 class MemoryEncoder(nn.Module):
     def __init__(self, embed_dim: int, kind: str = "gru", state_dim: int = 256, stack_k: int = 4):
         super().__init__()
-        if kind not in ("frame", "stack", "gru"):
+        if kind not in KINDS:
             raise ValueError(kind)
         self.kind, self.stack_k, self.state_dim = kind, stack_k, state_dim
-        self.obs = nn.Sequential(
-            nn.LayerNorm(embed_dim), nn.Linear(embed_dim, state_dim), nn.GELU()
-        )
-        step_dim = state_dim + MOTION_DIM
+        if kind != "motion":
+            self.obs = nn.Sequential(
+                nn.LayerNorm(embed_dim), nn.Linear(embed_dim, state_dim), nn.GELU()
+            )
+        step_dim = MOTION_DIM if kind == "motion" else state_dim + MOTION_DIM
         if kind == "gru":
             self.cell = nn.GRUCell(step_dim, state_dim)
         else:
@@ -49,10 +52,14 @@ class MemoryEncoder(nn.Module):
             "stack_k": stack_k,
         }
 
+    def _input(self, embed: torch.Tensor, motion: torch.Tensor) -> torch.Tensor:
+        u = motion / MOTION_SCALE.to(motion)
+        return u if self.kind == "motion" else torch.cat([self.obs(embed), u], -1)
+
     def forward(self, embed: torch.Tensor, motion: torch.Tensor) -> torch.Tensor:
         """[B, T, D], [B, T, 5] -> z [B, T, state_dim]; each sequence starts fresh."""
-        x = torch.cat([self.obs(embed), motion / MOTION_SCALE.to(motion)], -1)
-        if self.kind == "frame":
+        x = self._input(embed, motion)
+        if self.kind in ("motion", "frame"):
             return self.mix(x)
         if self.kind == "stack":
             k = self.stack_k
@@ -80,8 +87,8 @@ class MemoryEncoder(nn.Module):
 
         Matches ``forward`` on the whole sequence step by step.
         """
-        x = torch.cat([self.obs(embed), motion / MOTION_SCALE.to(motion)], -1)
-        if self.kind == "frame":
+        x = self._input(embed, motion)
+        if self.kind in ("motion", "frame"):
             return self.mix(x), state
         if self.kind == "stack":
             window = torch.cat([state[:, 1:], x[:, None]], 1)

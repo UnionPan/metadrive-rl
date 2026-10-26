@@ -57,13 +57,16 @@ def _input(frames, t_index, session):
 @pytest.fixture(scope="module")
 def models(tmp_path_factory):
     device = torch.device("cuda")
-    stock = vam_model.VAMModel(str(CKPT), str(TOKENIZER), device, [CAM], context_length=1)
-    torch.manual_seed(0)
-    memory, adapter = MemoryEncoder(768, "gru"), GatedAdapter(256)
-    bundle = tmp_path_factory.mktemp("bundle") / "zero_gate.pt"
-    save_bundle(bundle, CKPT, "dinov3-small", memory, adapter)
-    loaded = torch.load(bundle, map_location="cpu", weights_only=True)
-    ais = VaVAMAISModel(loaded, str(TOKENIZER), device, [CAM], context_length=1)
+    with pytest.MonkeyPatch.context() as mp:
+        # Both models load VaVAM with its muP base shapes (patches/alpasim/0005).
+        mp.setenv("VAVAM_MUP_SHAPES_DIR", str(ASSETS / "mup_shapes"))
+        stock = vam_model.VAMModel(str(CKPT), str(TOKENIZER), device, [CAM], context_length=1)
+        torch.manual_seed(0)
+        memory, adapter = MemoryEncoder(768, "gru"), GatedAdapter(256)
+        bundle = tmp_path_factory.mktemp("bundle") / "zero_gate.pt"
+        save_bundle(bundle, CKPT, "dinov3-small", memory, adapter)
+        loaded = torch.load(bundle, map_location="cpu", weights_only=True)
+        ais = VaVAMAISModel(loaded, str(TOKENIZER), device, [CAM], context_length=1)
     return stock, ais
 
 

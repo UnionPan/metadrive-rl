@@ -21,7 +21,7 @@ import polars as pl
 import torch
 import torch.nn.functional as F
 
-from metadrive_ais.memory.ais import AISHeads, MemoryEncoder, ais_losses
+from metadrive_ais.memory.ais import KINDS, AISHeads, MemoryEncoder, ais_losses
 from metadrive_ais.memory.sequences import collate, episodes_from_table
 
 
@@ -69,7 +69,7 @@ def main() -> None:
     )
     parser.add_argument("--data", type=Path, nargs="+", required=True, help="steps.parquet tables")
     parser.add_argument("--encoder", default="dinov3-small")
-    parser.add_argument("--kind", choices=("frame", "stack", "gru"), default="gru")
+    parser.add_argument("--kind", choices=KINDS, default="gru")
     parser.add_argument("--stack-k", type=int, default=4)
     parser.add_argument("--state-dim", type=int, default=256)
     parser.add_argument("--holdout-scenes", type=int, default=12)

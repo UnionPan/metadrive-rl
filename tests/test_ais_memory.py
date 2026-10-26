@@ -5,10 +5,8 @@ import polars as pl
 import pytest
 import torch
 
-from metadrive_ais.memory.ais import AISHeads, MemoryEncoder, ais_losses
+from metadrive_ais.memory.ais import KINDS, AISHeads, MemoryEncoder, ais_losses
 from metadrive_ais.memory.sequences import collate, episodes_from_table
-
-KINDS = ("frame", "stack", "gru")
 
 
 def _inputs(b=2, t=6, d=16, seed=0):
@@ -23,9 +21,10 @@ def test_memory_episode_reset(kind):
     enc = MemoryEncoder(16, kind=kind, state_dim=8, stack_k=3)
     e, u = _inputs()
     z = enc(e, u)
-    e2 = e.clone()
+    e2, u2 = e.clone(), u.clone()
     e2[0] += torch.randn_like(e2[0])  # a constant shift would vanish in LayerNorm
-    z2 = enc(e2, u)
+    u2[0] -= 2.0
+    z2 = enc(e2, u2)
     assert torch.allclose(z[1], z2[1]) and not torch.allclose(z[0], z2[0])
 
 
