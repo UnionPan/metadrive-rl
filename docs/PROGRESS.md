@@ -304,3 +304,25 @@ for prediction.** 197 train / 46 held-out episodes (12 held-out train scenes), 3
 - Behaviour data come from the as-shipped VaVAM (two context lengths). The
   scenes are short (~20 s, 39 queries), with few situations where history
   matters (guideline §6 lists the memory-dependent tests still to build).
+
+## M3 — first adapter SFT (flow loss only, VaVAM with muP base shapes)
+
+`runs/sft/gru_b3_s0`: GRU memory + gated adapter, flow-matching loss on
+expert-replay windows, VaVAM frozen, 6 epochs; held-out = 12 train scenes (312 windows):
+
+| epoch | held-out flow loss | open-loop ADE / FDE (m) | gate |
+|---|---|---|---|
+| 0 (= stock VaVAM-B\\*) | 0.0858 | 3.34 / 5.69 | 0 |
+| 6 | 0.0726 (−15%) | 3.00 / 5.26 | 0.25 |
+
+Lateral median stays ~0. Still improving at epoch 6.
+
+**Caveat:** the adapter gives VaVAM the executed ego motion (incl. speed),
+which VaVAM-B never sees (images + command only). The gain may come from
+that input rather than from memory.
+
+**Ablation (declared before running):** memory ∈ {frame (current frame +
+executed motion, no history), stack-4, GRU}, flow loss only, 8 epochs, the
+same 12 held-out scenes; frame and GRU with 2 seeds, stack with 1. Memory
+helps only if GRU/stack beat frame on held-out flow loss and ADE beyond the
+seed spread. The report now also gives longitudinal error (speed bias).

@@ -176,6 +176,9 @@ def open_loop_report(pred: np.ndarray, truth: np.ndarray) -> dict:
         "lateral_final_mean_m": float(err[:, -1, 1].mean()),
         "lateral_final_median_m": float(np.median(err[:, -1, 1])),
         "right_of_human": float((err[:, -1, 1] < 0).mean()),
+        # Positive = ahead of the human (too fast), negative = behind (too slow).
+        "longitudinal_final_median_m": float(np.median(err[:, -1, 0])),
+        "longitudinal_final_mean_m": float(err[:, -1, 0].mean()),
     }
 
 
