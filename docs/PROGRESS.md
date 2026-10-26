@@ -182,6 +182,10 @@ frozen DINOv3 feature cache (`metadrive_ais.vision`; DINOv3-S
    (VaVAM-B B0b still queried), 1 rollout per scene: frames along the human
    path and the human future trajectory as flow-matching SFT targets.
 
+3. `train_b0a_catk` (added 2026-10-26 when GPUs freed up): stock VaVAM-B B0a
+   (1 frame), CATK, 2 rollouts per scene. A second behaviour policy gives the
+   action diversity the action-conditioned AIS objectives need.
+
 val, val_cl, test, test_cl and eval_big stay out of all training data.
 
 ## M3 — AIS-conditioned VaVAM-B (groundwork)
