@@ -286,3 +286,21 @@ trained on `train_b0b_catk` + `train_b0a_catk`, the same 12 held-out train
 scenes, 3 seeds each, 300 epochs, best epoch by held-out total loss.
 Primary metrics: held-out next-step collision and offroad AUROC, and
 next-embedding NLL. Memory helps only if GRU/stack beat frame beyond the seed spread.
+
+**M2 result (`reports/m2_memory_comparison.md`): no measurable memory benefit
+for prediction.** 197 train / 46 held-out episodes (12 held-out train scenes), 3 seeds:
+
+| memory | collision AUROC | offroad AUROC | next-embed NLL | next-embed cosine |
+|---|---|---|---|---|
+| frame | 0.70 ± 0.10 | 0.78 ± 0.04 | **−0.160** | 0.735 |
+| stack-4 | 0.55 ± 0.10 | 0.76 ± 0.05 | −0.138 | 0.724 |
+| GRU | 0.69 ± 0.07 | 0.76 ± 0.05 | −0.150 | 0.741 |
+
+- Frame-only matches the GRU on outcome prediction and predicts the next
+  embedding slightly better. On this data the current frame plus executed
+  motion (which includes speed) is about as informative as the history.
+- Low power: 18 collision and 19 offroad events in the held-out set; AUROC
+  spreads ±0.05–0.10 across seeds.
+- Behaviour data come from the as-shipped VaVAM (two context lengths). The
+  scenes are short (~20 s, 39 queries), with few situations where history
+  matters (guideline §6 lists the memory-dependent tests still to build).
