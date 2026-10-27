@@ -475,3 +475,8 @@ zero-initialised (exact parity at the start); `--latent-decoder-scale 100`,
 otherwise identical (hindsight, PCA encoder, latent dim 4, prior weight 0.1,
 frame memory, 8 epochs, seed 0), same gate. In a 40-step check the spread
 grew 0 → 0.10 m and the posterior beat the prior (0.0415 vs 0.0418).
+
+**M5a CVAE retry result: fails the gate as well.** `runs/sft/m5a_latent_retry_s0`
+(`--kl-weight 0.001 --latent-dim 8`), best epoch 8: spread 0.056 m, posterior
+flow 0.0426 vs prior 0.0428, KL 0.17. Both declared CVAE configurations are
+negative results with the same cause (decoder scale vs. token norm, above).
