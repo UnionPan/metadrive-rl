@@ -562,3 +562,8 @@ barely moved). v8 vs v0, both sampled: −0.059 [−0.153, +0.015]. Exploration
 noise costs progress (v0 sampled vs B0b\*: −0.12 [−0.22, −0.03]). The RL
 machinery works end to end, but 512 rollouts of per-step dithering carry no
 learnable signal. v3b (held latents) is running.
+
+**M4 budget check, B4 at 16 epochs:** held-out flow 0.060 (best epoch 16) vs
+B3-16 0.056 and frame 0.038 (seed 0 each). Twice the budget keeps the
+ordering frame ≈ stack < GRU ≤ B4. Neither memory nor the AIS objective helps
+the action head on this data and budget.

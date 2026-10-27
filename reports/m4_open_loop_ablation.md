@@ -31,9 +31,10 @@ Stock VaVAM-B (zero gate): held-out flow 0.0858, ADE 3.34 m, FDE 5.69 m, longitu
   within 8 epochs: 0.069 trained end-to-end, 0.073 for the frozen
   AIS-trained memory. The AIS objective does not help the action head (B4 ≥
   B3).
-- **Caveat: budget.** Both GRUs were still improving at epoch 8, while
-  frame/stack/motion peaked at epochs 2–7. A 16-epoch GRU run checks this
-  (`docs/PROGRESS.md`).
+- **Budget check.** Both GRUs were still improving at epoch 8, while
+  frame/stack/motion peaked at epochs 2–7. At 16 epochs (seed 0): GRU 0.056 and
+  B4 0.060, against frame 0.038. Twice the budget keeps the ordering, though the
+  GRUs were still slowly improving.
 - **Closed loop:** the frame and GRU adapters give no score gain over B0b\*
   (`reports/m3_closed_loop.md`). These open-loop differences do not
   translate to driving on val_cl.
