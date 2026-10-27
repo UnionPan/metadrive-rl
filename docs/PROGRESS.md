@@ -412,3 +412,9 @@ for PPO (`training/latent_rl.py`, `scripts/latent_rl_loop.sh`).
    latents) vs v8 (after RL). Primary: paired score v8 − v0 (the RL effect,
    same architecture and supervised budget). Both are also compared with B0b\*.
    Per-iteration training scores are on different scenes and only diagnostic.
+
+**M4 budget check (declared before running, 2026-10-26):** B3 (GRU) and B4
+were still improving at epoch 8 (best epoch 7–8), while frame/stack peaked
+at epoch 2–3. B3 is rerun for 16 epochs, seed 0, otherwise the same protocol.
+If it approaches frame's held-out flow (0.037), the 8-epoch memory result is a
+budget artifact. B4 at 16 epochs follows if B3 moves materially.
