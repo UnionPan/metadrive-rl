@@ -555,3 +555,10 @@ an option policy with log-probs only at decision points (credit: decisions whose
 hold window overlaps control before the first incident). Evaluation as for v3:
 primary = v8 mean policy vs B0b\* (paired score, val_cl). Secondary: v8 held
 sampling vs v0 held sampling, plus the same offline signal check.
+
+**M5a v3 result (`reports/m5a_v3_rl.md`): no RL effect.** Primary: v8 mean
+policy vs B0b\* +0.014 [−0.108, +0.13] (it behaves like stock VaVAM; the policy
+barely moved). v8 vs v0, both sampled: −0.059 [−0.153, +0.015]. Exploration
+noise costs progress (v0 sampled vs B0b\*: −0.12 [−0.22, −0.03]). The RL
+machinery works end to end, but 512 rollouts of per-step dithering carry no
+learnable signal. v3b (held latents) is running.
