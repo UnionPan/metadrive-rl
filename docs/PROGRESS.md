@@ -494,3 +494,11 @@ score. Secondary: progress, offroad, at-fault collision. test_cl stays untouched
 0.037 for frame (best epoch 3). Twice the budget does not close the gap: the GRU
 optimises far more slowly but is not shown to be worse in the limit. B4 at 16
 epochs follows (declared rule: B3 moved materially).
+
+**eval_big-48 result (`reports/m3_eval_big48.md`): the frame adapter is worse
+than B0b\* in closed loop.** Paired score −0.088 [−0.161, −0.023] over 43
+matched scenes (−0.086 [−0.156, −0.023] when its 4 off-map aborts count as
+failures); pass rate −0.10; at-fault collision +0.07. The open-loop gain from
+the executed-motion input does not transfer; on more scenes it hurts. Four
+eval_big scenes abort for every policy (renderer exception on dynamic nodes,
+broken routes).
