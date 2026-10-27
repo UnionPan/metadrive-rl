@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 from collections import OrderedDict
 from typing import Any
@@ -39,6 +40,8 @@ from metadrive_ais.memory.ais import MemoryEncoder
 from metadrive_ais.models.latent_policy import LatentChannel
 from metadrive_ais.models.vavam_conditioning import GatedAdapter, attach_conditioning
 from metadrive_ais.vision.encoders import FrozenEncoder
+
+logger = logging.getLogger(__name__)
 
 BUNDLE_FORMAT = "metadrive-ais/vavam-ais-bundle@1"
 MAX_SESSIONS = 256
@@ -140,6 +143,17 @@ class VaVAMAISModel(VAMModel):
         self._latent_hold = int(os.environ.get("VAVAM_AIS_LATENT_HOLD", "1"))
         self._latent_log = os.environ.get("VAVAM_AIS_LATENT_LOG")
         self._policy_version = int(bundle.get("policy_version", 0))
+        logger.info(
+            "VaVAM-AIS: memory %s, adapter gate %.4f, latent %s, mode %s, hold %d, "
+            "policy version %d, VAVAM_MUP_SHAPES_DIR %s",
+            bundle["memory"]["config"]["kind"],
+            float(self._adapter.gate),
+            bundle["latent"]["config"] if "latent" in bundle else None,
+            self._latent_mode,
+            self._latent_hold,
+            self._policy_version,
+            os.environ.get("VAVAM_MUP_SHAPES_DIR"),
+        )
         self._sessions: OrderedDict[str, dict] = OrderedDict()
 
     @classmethod
