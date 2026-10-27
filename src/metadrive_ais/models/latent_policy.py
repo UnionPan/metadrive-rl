@@ -12,7 +12,8 @@ action ``c_t``:
   tokens have norm ~4e3, and the 3 s waypoint moves ~0.2 m per 100 units of
   residual norm, so a unit-scale decoder (scale 1) cannot reach a useful
   magnitude at Adam's step size. Hindsight channels use ``scale=100``, zero
-  initialised.
+  initialised. ``fixed=True`` instead freezes random orthonormal directions
+  (an RL-only channel: the policy learns which latent shifts help).
 - ``PCAPosterior``: an alternative, fixed encoder. The standardized top
   principal components of the expert's next waypoints, fitted on the training
   futures (``LatentChannel.fit_pca``). The decoder sees an informative latent
@@ -89,12 +90,20 @@ class PCAPosterior(nn.Module):
 
 class LatentDecoder(nn.Module):
     def __init__(
-        self, latent_dim: int, token_dim: int = 256, scale: float = 1.0, zero_init: bool = False
+        self,
+        latent_dim: int,
+        token_dim: int = 256,
+        scale: float = 1.0,
+        zero_init: bool = False,
+        fixed: bool = False,
     ):
         super().__init__()
         self.scale = scale
         self.proj = nn.Linear(latent_dim, token_dim, bias=False)
-        if zero_init:
+        if fixed:
+            nn.init.orthogonal_(self.proj.weight)  # unit-norm, mutually orthogonal columns
+            self.proj.requires_grad_(False)
+        elif zero_init:
             nn.init.zeros_(self.proj.weight)
 
     def forward(self, c: torch.Tensor) -> torch.Tensor:
@@ -109,6 +118,7 @@ class LatentChannel(nn.Module):
         token_dim: int = 256,
         encoder: str = "mlp",
         decoder_scale: float = 1.0,
+        decoder_fixed: bool = False,
     ):
         super().__init__()
         if encoder not in ("mlp", "pca"):
@@ -120,13 +130,22 @@ class LatentChannel(nn.Module):
         )
         # A scaled decoder starts at zero (exact parity) and learns from informative latents.
         self.decoder = LatentDecoder(
-            latent_dim, token_dim, decoder_scale, zero_init=decoder_scale != 1.0
+            latent_dim,
+            token_dim,
+            decoder_scale,
+            zero_init=decoder_scale != 1.0,
+            fixed=decoder_fixed,
         )
         self.config = {"state_dim": state_dim, "latent_dim": latent_dim, "token_dim": token_dim}
         if encoder != "mlp":  # older bundles have neither key
             self.config["encoder"] = encoder
         if decoder_scale != 1.0:
             self.config["decoder_scale"] = decoder_scale
+        if decoder_fixed:
+            self.config["decoder_fixed"] = True
+            # The RL policy starts at mean 0 and std 1 (the stock driver plus exploration noise).
+            nn.init.zeros_(self.prior.net[-1].weight)
+            nn.init.zeros_(self.prior.net[-1].bias)
 
     def fit_pca(self, futures: torch.Tensor) -> torch.Tensor:
         return self.posterior.fit(futures)

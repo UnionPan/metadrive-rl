@@ -46,3 +46,20 @@ def test_pca_encoder_gives_standardized_components_and_ignores_z():
     assert torch.equal(c, other_z)
     assert ch.config["encoder"] == "pca"
     assert "encoder" not in LatentChannel(16, 2, 8).config  # loads older bundles
+
+
+def test_fixed_rl_channel_is_frozen_orthonormal_and_starts_at_standard_normal():
+    torch.manual_seed(0)
+    ch = LatentChannel(
+        state_dim=16, latent_dim=3, token_dim=8, decoder_scale=50.0, decoder_fixed=True
+    )
+    w = ch.decoder.proj.weight  # [token_dim, latent_dim]
+    assert not w.requires_grad
+    assert torch.allclose(w.T @ w, torch.eye(3), atol=1e-5)
+    dist = ch.prior(torch.randn(5, 16))
+    assert torch.equal(dist.mean, torch.zeros(5, 3)) and torch.allclose(
+        dist.stddev, torch.ones(5, 3)
+    )
+    c = torch.tensor([[1.0, 0.0, 0.0]])
+    assert torch.isclose(ch.decoder(c).norm(), torch.tensor(50.0))
+    assert ch.config["decoder_fixed"] and ch.config["decoder_scale"] == 50.0

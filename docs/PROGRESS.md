@@ -502,3 +502,20 @@ failures); pass rate −0.10; at-fault collision +0.07. The open-loop gain from
 the executed-motion input does not transfer; on more scenes it hurts. Four
 eval_big scenes abort for every policy (renderer exception on dynamic nodes,
 broken routes).
+
+**M5a v3: RL-only latent channel on stock VaVAM-B (declared before running,
+2026-10-27).** Independent of v2b: can closed-loop RL through a latent residual
+improve stock VaVAM-B? Bundle (`drivers/vavam_ais.py --rl-latent 4 300` on
+`abl_frame_s0`): its frame encoder supplies z_t as features only, and the
+adapter gate is set to 0, so the mean policy is stock VaVAM-B (= B0b\*). The
+latent decoder is a fixed random orthonormal map × 300, and the prior starts
+at N(0, I). Sizing probe (`scripts/latent_gate.py`, 64 held-out windows):
+scale 150 / 300 / 600 → spread 0.47 / 0.93 / 1.69 m at 3 s; held-out ADE
+3.68 / 3.74 / 3.86 m. Scale 300 passes the 0.5 m gate.
+- RL as declared for M5a: 8 iterations × 16 train scenes × 4 rollouts, CATK,
+  AlpaSim score, scene-group baseline, PPO (lr 3e-5, target KL 0.02, KL 0.1 to
+  v0), GPUs 0/1.
+- Evaluation on val_cl (M1 protocol): primary = paired score of the v8
+  **mean** policy (`VAVAM_AIS_LATENT=mean`) vs B0b\*. Secondary: v8 sampled vs
+  v0 sampled (the RL effect at equal exploration noise), and v0 sampled vs
+  B0b\* (the cost of exploration noise).

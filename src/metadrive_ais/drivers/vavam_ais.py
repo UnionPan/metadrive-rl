@@ -245,6 +245,27 @@ def bundle_from_sft(sft_checkpoint, out, vavam_checkpoint) -> None:
     save_bundle(out, vavam_checkpoint, ckpt["feature_encoder"], memory, adapter, latent)
 
 
+def bundle_with_rl_latent(
+    sft_checkpoint, out, vavam_checkpoint, latent_dim: int, scale: float, seed: int = 0
+) -> None:
+    """Stock VaVAM plus an RL-only latent channel, from a flow-SFT checkpoint.
+
+    The SFT memory supplies z_t (features only); its adapter gate is set to zero,
+    so the mean policy is stock VaVAM-B. The latent decoder is a fixed random
+    orthonormal map scaled by ``scale``; the prior starts at N(0, I).
+    """
+    ckpt = torch.load(sft_checkpoint, map_location="cpu", weights_only=True)
+    memory = MemoryEncoder(**ckpt["memory"]["config"])
+    memory.load_state_dict(ckpt["memory"]["state_dict"])
+    adapter = GatedAdapter(memory.state_dim)
+    adapter.load_state_dict(ckpt["adapter"])
+    with torch.no_grad():
+        adapter.gate.zero_()
+    torch.manual_seed(seed)
+    latent = LatentChannel(memory.state_dim, latent_dim, decoder_scale=scale, decoder_fixed=True)
+    save_bundle(out, vavam_checkpoint, ckpt["feature_encoder"], memory, adapter, latent)
+
+
 if __name__ == "__main__":
     import argparse
     from pathlib import Path
@@ -255,10 +276,20 @@ if __name__ == "__main__":
     parser.add_argument("sft_checkpoint", type=Path)
     parser.add_argument("out", type=Path)
     parser.add_argument(
+        "--rl-latent",
+        nargs=2,
+        metavar=("DIM", "SCALE"),
+        help="stock VaVAM + fixed random latent channel for RL (bundle_with_rl_latent)",
+    )
+    parser.add_argument(
         "--vavam-checkpoint",
         type=Path,
         default=Path.home() / "ext/alpasim/data/drivers/vavam/VAM_width_1024_pretrained_139k.pt",
     )
     args = parser.parse_args()
-    bundle_from_sft(args.sft_checkpoint, args.out, args.vavam_checkpoint)
+    if args.rl_latent:
+        dim, scale = int(args.rl_latent[0]), float(args.rl_latent[1])
+        bundle_with_rl_latent(args.sft_checkpoint, args.out, args.vavam_checkpoint, dim, scale)
+    else:
+        bundle_from_sft(args.sft_checkpoint, args.out, args.vavam_checkpoint)
     print(f"bundle written to {args.out}")
