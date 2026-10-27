@@ -149,3 +149,30 @@ def test_held_latent_is_redrawn_only_at_decisions(models, tmp_path):
         assert records[3]["c"] != records[2]["c"] and records[4]["c"] == records[3]["c"]
     finally:
         ais._latent, ais._latent_log, ais._latent_hold = None, None, 1
+
+
+def test_memory_reset_limits_history(models):
+    """Different earlier frames, same poses: with a reset every query the output at
+    query 3 no longer depends on them; without a reset it does."""
+    _, ais = models
+    with torch.no_grad():
+        ais._adapter.gate.fill_(1.0)
+    try:
+        outputs = {}
+        for reset in (0, 1):
+            ais._memory_reset = reset
+            for name, offset in (("a", 6), ("b", 9)):
+                session = f"s-reset{reset}-{name}"
+                for i in range(3):
+                    _run(ais, [_input([FRAMES[offset + i]], i, session)])
+                outputs[reset, name] = (
+                    _run(ais, [_input([FRAMES[3]], 3, session)])[0],
+                    ais._sessions[session]["state"].clone(),
+                )
+        assert torch.equal(outputs[1, "a"][1], outputs[1, "b"][1])
+        assert np.array_equal(outputs[1, "a"][0], outputs[1, "b"][0])
+        assert not torch.equal(outputs[0, "a"][1], outputs[0, "b"][1])
+    finally:
+        ais._memory_reset = 0
+        with torch.no_grad():
+            ais._adapter.gate.zero_()

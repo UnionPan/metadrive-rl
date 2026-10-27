@@ -18,6 +18,9 @@ seeded by session and query index. ``VAVAM_AIS_LATENT=mean`` uses the prior mean
 instead. ``VAVAM_AIS_LATENT_HOLD=k`` (default 1) draws a new latent only every k
 queries and holds it in between (temporally persistent exploration; the draws
 are an option policy with decisions at queries 0, k, 2k, ...). With
+``VAVAM_AIS_MEMORY_RESET=k`` (memory-length test) resets the session's memory
+state before every k-th query, so z_t sees at most the last k queries; the
+current input (frame and last executed motion) is unchanged. With
 ``VAVAM_AIS_LATENT_LOG=<file>``, every query appends one JSON line (session,
 time, z_t, c_t, log q, seed, decision flag, hold, policy version) for the RL update.
 """
@@ -141,12 +144,14 @@ class VaVAMAISModel(VAMModel):
         if self._latent_mode not in ("sample", "mean"):
             raise ValueError(f"VAVAM_AIS_LATENT={self._latent_mode!r}: expected sample or mean")
         self._latent_hold = int(os.environ.get("VAVAM_AIS_LATENT_HOLD", "1"))
+        self._memory_reset = int(os.environ.get("VAVAM_AIS_MEMORY_RESET", "0"))
         self._latent_log = os.environ.get("VAVAM_AIS_LATENT_LOG")
         self._policy_version = int(bundle.get("policy_version", 0))
         logger.info(
-            "VaVAM-AIS: memory %s, adapter gate %.4f, latent %s, mode %s, hold %d, "
-            "policy version %d, VAVAM_MUP_SHAPES_DIR %s",
+            "VaVAM-AIS: memory %s (reset every %s queries), adapter gate %.4f, latent %s, "
+            "mode %s, hold %d, policy version %d, VAVAM_MUP_SHAPES_DIR %s",
             bundle["memory"]["config"]["kind"],
+            self._memory_reset or "never",
             float(self._adapter.gate),
             bundle["latent"]["config"] if "latent" in bundle else None,
             self._latent_mode,
@@ -194,6 +199,10 @@ class VaVAMAISModel(VAMModel):
             dtype=torch.float32,
             device=self._device,
         )
+        if self._memory_reset:
+            for s in sessions:
+                if s["queries"] % self._memory_reset == 0:
+                    s["state"] = self._memory.initial_state(1, self._device)[0]
         state = torch.stack([s["state"] for s in sessions])
         z, new_state = self._memory.step(state, embed, motion)
         for s, st, p in zip(sessions, new_state, poses, strict=True):
