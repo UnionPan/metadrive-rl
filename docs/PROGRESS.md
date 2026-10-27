@@ -616,3 +616,26 @@ negative result.
 - VaVAM integration (the M5b deliverable) would fit (319M + 38M parameters) but
   is a policy package, rollout transport and trainer for the same latent policy
   that M5a found no gain with. Left as the remaining engineering stretch.
+
+## M4 — memory-dependent scenario tests (guideline §6; declared before running, 2026-10-27)
+
+All cases come from actual AlpaSim rollouts (held-out expert-replay windows,
+held-out CATK steps) or supported simulator controls (driver memory reset).
+- **T1 history length (open loop):** B3 (GRU, 16 epochs) and B4 (frozen AIS
+  GRU, 16 epochs) on the 312 held-out windows, with the memory re-run over only
+  the last k ∈ {1, 2, 4, 8, 16, all} queries (observation timestamps
+  unchanged). History matters if held-out flow loss falls as k grows.
+- **T2 memory-relevant slices (open loop):** held-out windows classified by
+  the ego's own speed history over the last 2 s: stop-and-go (stopped at some
+  point, now > 3 m/s), decelerating (speed fell > 2 m/s), accelerating (rose >
+  2 m/s), steady. motion-only, frame, stack, GRU-16 and B4-16 (seed 0) are
+  compared on flow loss and ADE within each slice, with scene-cluster bootstrap
+  CIs on the GRU − frame difference.
+- **T3 history in closed loop:** the B3 GRU-16 adapter bundle in AlpaSim
+  (val_cl, M1 protocol) with its memory reset every k queries:
+  `VAVAM_AIS_MEMORY_RESET` = 1 (current step only), 4 (2 s), and never.
+  Primary: paired score never − reset-1.
+- **T4 predictive memory on informative steps:** the M2 AIS heads (frame vs
+  GRU, 3 seeds each) on held-out CATK steps whose speed changed > 3 m/s over the
+  previous 2 s: collision/offroad AUROC and next-embedding NLL on that subset,
+  with the event count reported (power).
