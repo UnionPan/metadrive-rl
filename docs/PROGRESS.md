@@ -538,3 +538,20 @@ Summary of the latent-channel attempts (all frame memory, 8 epochs):
 | hindsight PCA, decoder ×1 | stopped at epoch 2 (no learning) | — | design bug |
 | hindsight PCA, decoder ×100 | 0.138 m | 0.0646 vs 0.0693 | fail (prior too narrow) |
 | fixed random ×300 (v3, RL only) | 0.93 m (probe) | n/a | passes; RL running |
+
+**M5a v3 training diagnosis (before its evaluation):** the policy barely moved
+(KL to v0 0.010–0.053; v8 prior-head weights ~2e-4). Offline check over all 8
+iterations (292 rollouts with group signal): no latent dimension correlates
+with the advantage (max |r| = 0.093, permutation p = 0.39). With a fresh
+latent every 0.5 s, the exploration is temporal dithering: plans are re-drawn
+before a perturbation can change behaviour consistently, so outcome differences
+are noise from the policy's point of view.
+
+**M5a v3b: temporally persistent exploration (declared before running,
+2026-10-27).** Same as v3 (bundle `runs/rl/v3_bundle_v0.pt`, 8 iterations × 16
+train scenes × 4 rollouts, the same PPO settings and scene seeds), but
+`VAVAM_AIS_LATENT_HOLD=4`. A latent is drawn every 4 queries (2 s) and held,
+an option policy with log-probs only at decision points (credit: decisions whose
+hold window overlaps control before the first incident). Evaluation as for v3:
+primary = v8 mean policy vs B0b\* (paired score, val_cl). Secondary: v8 held
+sampling vs v0 held sampling, plus the same offline signal check.
