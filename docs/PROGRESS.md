@@ -575,3 +575,11 @@ part of that (v8 vs v0 held +0.08 [−0.04, +0.23]) by exploring less, not by
 finding a better direction (no directional correlation: max |r| = 0.10,
 p = 0.24; size of perturbation vs advantage r = −0.11, p = 0.057). In this
 channel, stock VaVAM is a local optimum at this budget.
+
+**M5a equal-budget non-RL comparator (declared before running, 2026-10-27).**
+Advantage-weighted regression (`training/latent_awr.py`), labelled
+reward-weighted imitation, not RL. Data: the same 512 rollouts as v3b (all 8
+iterations, decision points, per-iteration scene-group advantages). One offline
+weighted maximum-likelihood fit of q_phi(c | z) from the v0 prior, weights
+exp(A) clipped at 20, 300 full-batch Adam steps at lr 1e-3. Evaluation: mean
+policy on val_cl (M1 protocol), paired vs B0b\* and vs v3b v8 mean.
