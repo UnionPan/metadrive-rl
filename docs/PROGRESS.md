@@ -438,3 +438,27 @@ log-probs matched to 7e-6. Changes:
 - Observed: that checkpoint's prior std sits at the log-std clamp (e¹), so
   the std gets no gradient. RL can move only the latent means (fixed
   exploration noise). Reported as `prior_std_at_clamp` in the update stats.
+
+**M5a step 1 result: the CVAE latent channel fails the gate (posterior
+collapse).** `runs/sft/m5a_latent_s0`, best epoch 3: latent spread 0.056 m at
+3 s (gate ≥ 0.5 m), posterior flow 0.0466 vs prior 0.0468; KL fell to 0.006
+by epoch 8. As an adapter it still learns (flow 0.047, like frame). Diagnosis:
+flow gradients into the latent path are tiny (decoder ~1e-6 vs prior-NLL ~3).
+Decoder gradients scale with c and encoder gradients with W_c, so a learned
+encoder starts at a saddle, and the injected posterior noise only hurts until
+c is informative. The decoder learns to mute it. The declared retry
+(`--kl-weight 0.001 --latent-dim 8`) is collapsing the same way (spread 0.054 m
+at epoch 3); its final result follows.
+
+**M5a channel v2 (declared before running, 2026-10-26): hindsight latent with
+a fixed PCA encoder.** c_t = the standardized top-4 principal components of
+the human's next 6 waypoints (PCA fitted on the training futures). Training
+uses c_t deterministically (no noise, no KL), so the decoder learns to steer
+VaVAM from an informative latent (decoder gradient ~600× larger in a check).
+The prior q_phi(c | z_t) is fitted by maximum likelihood to those detached
+latents (`--latent-objective hindsight --latent-encoder pca --latent-dim 4
+--prior-weight 0.1`, frame memory, 8 epochs, seed 0). Sampling the prior then
+spreads plans over the futures that are plausible given z_t. Same gate (spread
+≥ 0.5 m, posterior flow < prior flow). If the CVAE retry passes after all, it
+stays the declared choice for RL and v2 is reported alongside. If v2 fails,
+latent RL stops here and the report records the negative result.
