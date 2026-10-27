@@ -76,6 +76,10 @@ def export_checkpoint(bundle_path: str | Path, out_dir: str | Path) -> Path:
         architectures=["VaVAMLatentPolicy"],
     )
     config.save_pretrained(out)
+    # Cosmos-RL's safetensors export reads a generation config from the base checkpoint.
+    from transformers import GenerationConfig
+
+    GenerationConfig().save_pretrained(out)
     prior = {
         f"prior.{k[len('prior.') :]}": v.contiguous()
         for k, v in latent["state_dict"].items()
@@ -85,13 +89,64 @@ def export_checkpoint(bundle_path: str | Path, out_dir: str | Path) -> Path:
     return out
 
 
+class NullTokenizer:
+    """Cosmos-RL's controller loads a tokenizer for every RL run; the latent policy
+    has no text, so it gets this stub (registered as a custom tokenizer loader)."""
+
+    pad_token_id = eos_token_id = 0
+    pad_token = eos_token = ""
+
+    def __len__(self) -> int:
+        return 1
+
+    def decode(self, *args, **kwargs) -> str:
+        return ""
+
+    def batch_decode(self, sequences, *args, **kwargs) -> list[str]:
+        return ["" for _ in sequences]
+
+    def save_pretrained(self, save_directory, *args, **kwargs) -> tuple[str, ...]:
+        return ()  # nothing to save (called with Cosmos-RL checkpoints)
+
+
+def is_latent_checkpoint(model_name_or_path: str) -> bool:
+    config = Path(model_name_or_path) / "config.json"
+    return config.is_file() and json.loads(config.read_text()).get("model_type") == MODEL_TYPE
+
+
+def bundle_from_export(export_dir: str | Path, out: str | Path, policy_version: int) -> Path:
+    """VaVAM-AIS bundle (AlpaSim driver) from a Cosmos-RL safetensors export of the prior."""
+    from safetensors.torch import load_file
+
+    export_dir = Path(export_dir)
+    config = json.loads((export_dir / "config.json").read_text())
+    if config.get("model_type") != MODEL_TYPE:
+        raise ValueError(f"{export_dir} is not a {MODEL_TYPE} export")
+    prior = {}
+    for shard in sorted(export_dir.glob("*.safetensors")):
+        prior.update(load_file(str(shard)))
+    bundle = torch.load(config["bundle_path"], map_location="cpu", weights_only=True)
+    state = bundle["latent"]["state_dict"]
+    expected = {k for k in state if k.startswith("prior.")}
+    if set(prior) != expected:
+        raise KeyError(f"export keys {sorted(prior)} != bundle prior keys {sorted(expected)}")
+    for key, value in prior.items():
+        state[key] = value.to(state[key].dtype)
+    bundle["policy_version"] = int(policy_version)
+    bundle["fit"] = f"alpagym export {export_dir}"
+    torch.save(bundle, out)
+    return Path(out)
+
+
 def register_cosmos() -> None:
-    """Register the Cosmos-RL model wrapper and weight mapper (AlpaGym envs only)."""
+    """Register the Cosmos-RL model wrapper, weight mapper and tokenizer stub (AlpaGym only)."""
     from cosmos_rl.policy.model.base import BaseModel, ModelRegistry, WeightMapper
+    from cosmos_rl.utils import util as cosmos_util
 
     register_hf()
     if MODEL_TYPE in ModelRegistry._MODEL_REGISTRY:
         return
+    cosmos_util.register_tokenizer_loader(is_latent_checkpoint, lambda path: NullTokenizer())
 
     class VaVAMLatentWeightMapper(WeightMapper):
         """Policy and rollout share parameter names (``prior.*``)."""
@@ -117,12 +172,24 @@ def register_cosmos() -> None:
 
         @property
         def parallelize_fn(self):
+            """FSDP2 over the DP mesh, as Cosmos-RL expects, in fp32: the rollout
+            scores log q in fp32 and the PPO ratio must start at exactly 1."""
+
             def parallelize(model, parallel_dims, config, pp_loss_fn=None):
+                from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
+
                 if parallel_dims.dp_shard_enabled:
-                    raise NotImplementedError(
-                        "the latent prior is not sharded; use dp_shard_size 1"
+                    names = ("dp_shard_cp",)
+                    if parallel_dims.dp_replicate_enabled:
+                        names = ("dp_replicate", "dp_shard_cp")
+                    mesh = parallel_dims.mesh[names]
+                    if mesh.size() != 1:
+                        raise NotImplementedError("the latent prior is tiny: use one policy GPU")
+                    policy = MixedPrecisionPolicy(
+                        param_dtype=torch.float32, reduce_dtype=torch.float32
                     )
-                if parallel_dims.dp_replicate_enabled:
+                    fully_shard(model, mesh=mesh, mp_policy=policy)
+                elif parallel_dims.dp_replicate_enabled:
                     from torch.distributed._composable.replicate import replicate
 
                     replicate(model, device_mesh=parallel_dims.mesh)
@@ -142,10 +209,18 @@ def register_cosmos() -> None:
             self, model_name_or_path, parallel_dims=None, device=None, revision=None
         ):
             from safetensors.torch import load_file
+            from torch.distributed.tensor import DTensor
 
             state = load_file(os.path.join(model_name_or_path, "model.safetensors"))
-            self.load_state_dict(state, strict=True)
-            if device is not None:
+            params = dict(self.named_parameters())
+            if set(params) != set(state):
+                raise KeyError(f"checkpoint keys {sorted(state)} != model keys {sorted(params)}")
+            for name, param in params.items():
+                # FSDP2 on a one-rank mesh: the local shard is the full tensor.
+                target = param.to_local() if isinstance(param, DTensor) else param.data
+                with torch.no_grad():
+                    target.copy_(state[name].to(device=target.device, dtype=target.dtype))
+            if device is not None and not any(isinstance(p, DTensor) for p in params.values()):
                 self.to(device)
 
         def separate_model_parts(self):
@@ -170,12 +245,21 @@ def register_cosmos() -> None:
 def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Export a VaVAM-AIS bundle's prior for AlpaGym.")
-    parser.add_argument("bundle", type=Path)
+    parser = argparse.ArgumentParser(
+        description="Export a VaVAM-AIS bundle's prior for AlpaGym, or (--from-export) turn an "
+        "AlpaGym/Cosmos-RL safetensors export back into a VaVAM-AIS bundle."
+    )
+    parser.add_argument("source", type=Path, help="bundle.pt, or an export dir with --from-export")
     parser.add_argument("out", type=Path)
+    parser.add_argument("--from-export", action="store_true")
+    parser.add_argument("--policy-version", type=int, default=0)
     args = parser.parse_args()
-    out = export_checkpoint(args.bundle, args.out)
-    print(json.dumps({"checkpoint": str(out)}))
+    if args.from_export:
+        out = bundle_from_export(args.source, args.out, args.policy_version)
+        print(json.dumps({"bundle": str(out)}))
+    else:
+        out = export_checkpoint(args.source, args.out)
+        print(json.dumps({"checkpoint": str(out)}))
 
 
 if __name__ == "__main__":

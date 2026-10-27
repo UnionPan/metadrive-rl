@@ -639,3 +639,55 @@ held-out CATK steps) or supported simulator controls (driver memory reset).
   GRU, 3 seeds each) on held-out CATK steps whose speed changed > 3 m/s over the
   previous 2 s: collision/offroad AUROC and next-embedding NLL on that subset,
   with the event count reported (power).
+
+**M5b result: VaVAM-AIS runs in AlpaGym end to end (2026-10-27).**
+`metadrive_ais.alpagym` is an AlpaGym policy bundle (entry points
+`alpagym.policy_bundles` / `alpagym.configs`):
+- The trainable policy is the latent prior. It is wrapped as a Cosmos-RL
+  `BaseModel` (FSDP2 on one rank, fp32) with an identity weight mapper and a
+  tokenizer stub.
+- An `InferenceModel` runs VaVAM-B, the frame memory and the latent channel on
+  AlpaGym's queries. AlpaGym's generic session policy is configured for one
+  1080p front camera, 8 frames at 2 Hz and two poses 0.5 s apart.
+- The replay payload is (z_t, c_t), which the trainer scores as log q.
+- AlpaSim runs from a dedicated copy (`~/ext/alpasim-alpagym`) with the gsplat
+  renderer (`driver_source=external_dynamic_renderer`, patch 0006).
+
+Run (`scripts/alpagym_vavam_smoke.sh`, RL v0 bundle, train scene `01d503d4`,
+2 GPUs disaggregated, `on_policy`, one GRPO group of 2 rollouts per step, 2 steps):
+
+| event | time | detail |
+|---|---|---|
+| initial weight sync to rollout | 08:41:24 | 4 tensors, 0.13 MB |
+| rollout round 1 (v0) | 08:41:24–08:42:18 | 2 × 16 policy steps; rewards 0.525, 0.463 |
+| training step 1 | 08:42:18 | 16 minibatches; **first-minibatch PPO ratio 1.000000** |
+| weight sync, step-1 weights | 08:42:19.006 | 4 tensors, 5 ms |
+| rollout round 2 (v1) | 08:42:19.008–08:43:04 | rewards −9.61, −4.48 |
+| training step 2 | 08:43:04 | **first-minibatch ratio 1.000000**: round 2 ran on the synced weights |
+| HF safetensors export, final sync | 08:43:04 | `bundle_from_export` turns it back into a VaVAM-AIS bundle (policy version 2) that the AlpaSim driver loads |
+
+- Rollout and trainer log q agree exactly, offline (`tests/test_alpagym_bundle.py`)
+  and live (ratio 1 on each step's first minibatch). With the latent residual
+  removed, the AlpaGym inference path reproduces stock VaVAM-B bit for bit on
+  the same tokens.
+- Throughput (2 GPUs disaggregated): a round of 2 concurrent episodes × 16
+  policy steps takes 45–54 s (~0.6–0.7 policy steps/s), dominated by
+  simulation and rendering. A GRPO step on the 34k-parameter prior takes
+  < 0.1 s, and a weight sync 5 ms.
+- 1 GPU (`topology=local_colocated_1gpu`): Cosmos starts no rollout replica
+  ("No valid rollout replicas found") and the run waits forever. AlpaGym
+  documents and tests only the 2-GPU disaggregated layout; 4-GPU layouts are
+  Slurm-only. So no 1-/4-GPU throughput here.
+- Findings while integrating:
+  - AlpaGym `uv sync`s the AlpaSim checkout it is given, which pruned this
+    package from the main venv. Hence the dedicated copy; the main venv was
+    restored.
+  - Cosmos-RL's controller needs a tokenizer even for non-text policies
+    (custom loader).
+  - With `train_batch_per_replica` smaller than `n_generation`, `on_policy`
+    drops the group's second rollout as outdated and the run stalls. One full
+    group per step works.
+  - VaVAM's TorchScript tokenizer drifts ~0.3% of tokens with call history and
+    batch size (AlpaSim's driver too).
+- The round-2 rewards are much worse after 16 minibatch updates on one scene.
+  That is a smoke run, not an RL result; M5a covers the RL question.

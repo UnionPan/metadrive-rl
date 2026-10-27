@@ -3,7 +3,8 @@
 # patched checkout with the external gsplat sensorsim (no NRE on Turing), VaVAM's
 # camera preset, one GRPO step on the latent prior, weight sync.
 #   policy.model.path: python -m metadrive_ais.alpagym.model <bundle.pt> <dir>
-#   renderer: scripts/serve_gsplat_renderer.sh <port> <gpu>, port in extra_overrides
+#   renderer: scripts/serve_gsplat_renderer.sh <port> <gpu>; ALPASIM_RENDERER_ADDRS='[localhost:<port>]'
+#   (driver_source external_dynamic_renderer: patches/alpasim/0006)
 
 defaults:
   - override /policy: vavam_ais
@@ -20,17 +21,17 @@ dataset:
     - clipgt-01d503d4-449b-46fc-8d78-9085e70d3554
 
 alpasim:
-  repo_path: ${oc.env:HOME}/ext/alpasim
+  # A dedicated copy: AlpaGym runs `uv sync` in it, which would prune extra
+  # packages (e.g. this one) from the main ~/ext/alpasim venv.
+  repo_path: ${oc.env:HOME}/ext/alpasim-alpagym
   repo_url: null
   repo_ref: null
   wizard_args:
     driver: vavam_configs
+    driver_source: external_dynamic_renderer
     control_timestep_us: 500_000
     force_gt_duration_us: 4_000_000
-    extra_overrides: >-
-      wizard.run_sim_services=[physics,trafficsim,controller,runtime]
-      wizard.external_services={renderer:[localhost:46300]}
-      runtime.simulation_config.pose_reporting_interval_us=500000
+    extra_overrides: runtime.simulation_config.pose_reporting_interval_us=500000
 
 cosmos:
   mode: disaggregated
@@ -41,18 +42,23 @@ cosmos:
     parallelism:
       dp_shard_size: 1
   train:
-    max_num_steps: 1
-    num_epochs: 1
-    train_batch_per_replica: 1
+    # Two steps: step 2's rollouts must run on the weights synced after step 1.
+    max_num_steps: 2
+    num_epochs: 2  # the scene twice: step 2 rolls out on the weights synced after step 1
+    # One full GRPO group (n_generation rollouts of the scene) per step, so every
+    # rollout a step trains on was generated with the same weights.
+    train_batch_per_replica: 2
     optm_lr: 3.0e-5
     optm_warmup_steps: 1
     ckpt:
       enable_checkpoint: true
       export_safetensors: true
     train_policy:
-      mini_batch: 1
+      mini_batch: 2
       grpo_optimization_iterations: 1
       kl_beta: 0.0
+      # Fully synchronous: each rollout round waits for the weights of the previous step.
+      on_policy: true
   rollout:
     n_generation: 2
     batch_size: 1

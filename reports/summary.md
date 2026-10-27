@@ -41,6 +41,8 @@ ran; negative results are kept.
   (fp16, SDPA, layer split), with the corrected VaVAM loader.
 - An AlpaSim driver plugin (`vavam_ais`): per-session memory, zero-gate parity
   with stock VaVAM, seeded latent policies with exact log-prob logging.
+- An AlpaGym policy bundle for VaVAM-AIS (`metadrive_ais.alpagym`): latent-policy GRPO through
+  Cosmos-RL with AlpaSim and the gsplat renderer, weight sync verified on policy.
 - Episode datasets from AlpaSim logs (frames, commands, executed motion,
   outcomes), DINOv3/VQ caches, flow-matching SFT through the frozen expert,
   scene-cluster bootstrap evaluation with paired comparisons and abort

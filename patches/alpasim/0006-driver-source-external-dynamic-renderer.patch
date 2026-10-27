@@ -1,0 +1,21 @@
+diff --git a/src/wizard/configs/driver_source/external_dynamic_renderer.yaml b/src/wizard/configs/driver_source/external_dynamic_renderer.yaml
+new file mode 100644
+index 0000000..ebbfa49
+--- /dev/null
++++ b/src/wizard/configs/driver_source/external_dynamic_renderer.yaml
+@@ -0,0 +1,15 @@
++# @package _global_
++# external_dynamic (driver addresses per request, e.g. AlpaGym's egodriver) plus an
++# externally launched sensorsim (e.g. the Turing gsplat renderer):
++#   ALPASIM_RENDERER_ADDRS YAML list, e.g. '[localhost:46300]'
++# Requires host networking: wizard.debug_flags.use_localhost=true.
++
++wizard:
++  run_sim_services: ["physics", "trafficsim", "controller", "runtime"]
++  external_services:
++    renderer: ${oc.decode:${oc.env:ALPASIM_RENDERER_ADDRS,'[localhost:46100]'}}
++
++runtime:
++  endpoints:
++    driver:
++      skip: true
