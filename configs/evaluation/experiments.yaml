@@ -1,0 +1,20 @@
+# Registry of the closed-loop evaluations behind the reports. Used by
+# scripts/export_runs.py to build the per-run artifact contract (guideline §7)
+# under outputs/<id>/. All runs: M1 protocol (CATK, 4 s forced replay, route
+# commands, 8-frame context) with VAVAM_MUP_SHAPES_DIR set (muP base shapes),
+# except repro_b0b (README reproduce snippet: 4 val_cl scenes).
+experiments:
+  - {id: m1_b0a_star, run: runs/vavam/m1_mup/b0a, label: "B0a* stock VaVAM-B, 1-frame context", report: reports/m1_corrected_baselines.md, split: val_cl}
+  - {id: m1_b0b_star, run: runs/vavam/m1_mup/b0b, label: "B0b* stock VaVAM-B, 8-frame context", report: reports/m1_corrected_baselines.md, split: val_cl}
+  - {id: m3_frame_valcl, run: runs/ais/m3_cl/frame_s0, label: "B1 frame adapter (AIS driver)", report: reports/m3_closed_loop.md, split: val_cl}
+  - {id: m3_gru_valcl, run: runs/ais/m3_cl/gru_s0, label: "B3 GRU adapter (AIS driver)", report: reports/m3_closed_loop.md, split: val_cl}
+  - {id: m3_eval_big48_b0b, run: runs/ais/eval_big48/b0b, label: "B0b* stock VaVAM-B", report: reports/m3_eval_big48.md, split: eval_big-48}
+  - {id: m3_eval_big48_frame, run: runs/ais/eval_big48/frame, label: "B1 frame adapter (AIS driver)", report: reports/m3_eval_big48.md, split: eval_big-48}
+  - {id: m5a_v3_v0_sample, run: runs/rl/v3_eval/v0_sample, label: "RL v3 v0, sampled per-step latents", report: reports/m5a_v3_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: sample, VAVAM_AIS_LATENT_HOLD: 1}}
+  - {id: m5a_v3_v8_sample, run: runs/rl/v3_eval/v8_sample, label: "RL v3 v8, sampled per-step latents", report: reports/m5a_v3_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: sample, VAVAM_AIS_LATENT_HOLD: 1}}
+  - {id: m5a_v3_v8_mean, run: runs/rl/v3_eval/v8_mean, label: "RL v3 v8, mean policy", report: reports/m5a_v3_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: mean}}
+  - {id: m5a_v3b_v0_held, run: runs/rl/v3b_eval/v0_sample, label: "RL v3b v0, latents held 4 queries", report: reports/m5a_v3b_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: sample, VAVAM_AIS_LATENT_HOLD: 4}}
+  - {id: m5a_v3b_v8_held, run: runs/rl/v3b_eval/v8_sample, label: "RL v3b v8, latents held 4 queries", report: reports/m5a_v3b_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: sample, VAVAM_AIS_LATENT_HOLD: 4}}
+  - {id: m5a_v3b_v8_mean, run: runs/rl/v3b_eval/v8_mean, label: "RL v3b v8, mean policy", report: reports/m5a_v3b_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: mean}}
+  - {id: m5a_awr_mean, run: runs/rl/awr_v3b/awr_mean, label: "AWR on v3b rollouts, mean policy", report: reports/m5a_v3b_rl.md, split: val_cl, env: {VAVAM_AIS_LATENT: mean}}
+  - {id: repro_b0b, run: runs/repro/b0b, label: "README reproduce snippet (stock VaVAM-B, 4 val_cl scenes)", report: README.md, split: "val_cl, first 4 scenes"}

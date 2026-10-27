@@ -66,7 +66,11 @@ For the AIS driver, use `vavam_ais` with
 `DRIVER_OVERRIDES="model.checkpoint_path=<bundle.pt> inference.context_length=8"`.
 Bundles come from `python -m metadrive_ais.drivers.vavam_ais <sft best.pt> <out>`.
 Exact commands for each experiment are in `docs/PROGRESS.md` and the run
-launchers (`runs/**/launch.sh`).
+launchers (`runs/**/launch.sh`). `scripts/export_runs.py` writes the per-run
+artifact contract for every registered evaluation
+(`configs/evaluation/experiments.yaml`) to `outputs/<id>/`. Each entry has the
+resolved configs, the commit in effect, the environment, checkpoint SHA-256s,
+metrics, and links to the native logs and videos.
 
 ## Layout
 
