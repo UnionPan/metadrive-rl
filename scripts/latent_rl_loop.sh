@@ -8,7 +8,8 @@
 #
 # Usage: scripts/latent_rl_loop.sh <out-dir> <bundle-v0> <iterations>
 # Env:   RL_GPUS ("2 3": one stack + renderer per GPU), SCENES_PER_ITER (16),
-#        ROLLOUTS (4 per scene), SEED (0), START (first iteration, to resume)
+#        ROLLOUTS (4 per scene), SEED (0), START (first iteration, to resume),
+#        VAVAM_AIS_LATENT_HOLD (queries per latent draw, passed to the driver; default 1)
 set -euo pipefail
 
 OUT=$(realpath -m "${1:?usage: latent_rl_loop.sh <out-dir> <bundle-v0> <iterations>}")

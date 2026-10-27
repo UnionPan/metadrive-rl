@@ -15,8 +15,11 @@ inference. Needs the session id (``patches/alpasim/0004``).
 Bundles with a latent action channel (M5a, :mod:`metadrive_ais.models.latent_policy`)
 also sample ``c_t ~ q_phi(c | z_t)`` per query and add ``W_c c_t``. The draw is
 seeded by session and query index. ``VAVAM_AIS_LATENT=mean`` uses the prior mean
-instead. With ``VAVAM_AIS_LATENT_LOG=<file>``, every query appends one JSON line
-(session, time, z_t, c_t, log q, seed, policy version) for the RL update.
+instead. ``VAVAM_AIS_LATENT_HOLD=k`` (default 1) draws a new latent only every k
+queries and holds it in between (temporally persistent exploration; the draws
+are an option policy with decisions at queries 0, k, 2k, ...). With
+``VAVAM_AIS_LATENT_LOG=<file>``, every query appends one JSON line (session,
+time, z_t, c_t, log q, seed, decision flag, hold, policy version) for the RL update.
 """
 
 from __future__ import annotations
@@ -134,6 +137,7 @@ class VaVAMAISModel(VAMModel):
         self._latent_mode = os.environ.get("VAVAM_AIS_LATENT", "sample")
         if self._latent_mode not in ("sample", "mean"):
             raise ValueError(f"VAVAM_AIS_LATENT={self._latent_mode!r}: expected sample or mean")
+        self._latent_hold = int(os.environ.get("VAVAM_AIS_LATENT_HOLD", "1"))
         self._latent_log = os.environ.get("VAVAM_AIS_LATENT_LOG")
         self._policy_version = int(bundle.get("policy_version", 0))
         self._sessions: OrderedDict[str, dict] = OrderedDict()
@@ -193,6 +197,7 @@ class VaVAMAISModel(VAMModel):
             latent_seed(inp.session_uuid, s["queries"])
             for inp, s in zip(inputs, sessions, strict=True)
         ]
+        decision = [s["queries"] % self._latent_hold == 0 for s in sessions]
         if self._latent_mode == "mean":
             c = dist.mean
         else:
@@ -203,6 +208,11 @@ class VaVAMAISModel(VAMModel):
                 ]
             ).to(self._device)
             c = dist.mean + dist.stddev * noise
+            for i, s in enumerate(sessions):  # between decisions, keep the last draw
+                if decision[i]:
+                    s["latent"] = c[i]
+                else:
+                    c[i] = s["latent"]
         logp = dist.log_prob(c).sum(-1)
         if self._latent_log:
             with open(self._latent_log, "a") as f:
@@ -215,6 +225,8 @@ class VaVAMAISModel(VAMModel):
                         "c": c[i].tolist(),
                         "logp": float(logp[i]),
                         "seed": seeds[i],
+                        "decision": decision[i],
+                        "hold": self._latent_hold,
                         "mode": self._latent_mode,
                         "policy_version": self._policy_version,
                     }

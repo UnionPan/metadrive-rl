@@ -132,3 +132,20 @@ def test_latent_draws_are_reproducible_and_logged(models, tmp_path):
             assert abs(float(logp) - r["logp"]) < 1e-4
     finally:
         ais._latent, ais._latent_log = None, None
+
+
+def test_held_latent_is_redrawn_only_at_decisions(models, tmp_path):
+    _, ais = models
+    torch.manual_seed(0)
+    latent = LatentChannel(256, latent_dim=4).to(ais._device).eval()
+    log = tmp_path / "held.jsonl"
+    ais._latent, ais._latent_log, ais._latent_mode, ais._latent_hold = latent, str(log), "sample", 3
+    try:
+        for i in range(5):
+            _run(ais, [_input([FRAMES[i]], i, "s-held")])
+        records = [json.loads(line) for line in log.read_text().splitlines()]
+        assert [r["decision"] for r in records] == [True, False, False, True, False]
+        assert records[0]["c"] == records[1]["c"] == records[2]["c"]
+        assert records[3]["c"] != records[2]["c"] and records[4]["c"] == records[3]["c"]
+    finally:
+        ais._latent, ais._latent_log, ais._latent_hold = None, None, 1

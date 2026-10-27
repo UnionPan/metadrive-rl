@@ -12,9 +12,11 @@ an environment input; its density is not optimised.
   batch (group baseline), divided by the batch standard deviation of those
   differences. Scenes whose rollouts all score the same contribute nothing;
   they are counted.
-- Credit: every query after the forced replay up to the first incident (offroad
-  or any collision), where AlpaSim stops scoring. Latents drawn during the
-  replay do not move the ego and are skipped.
+- Credit: every latent decision whose effect falls after the forced replay and
+  up to the first incident (offroad or any collision), where AlpaSim stops
+  scoring. With a held latent (``hold`` = k queries), only decision queries
+  carry a log-probability; a decision counts if its hold window
+  [t, t + (k - 1) * 0.5 s] overlaps that interval.
 - Update: clipped PPO on the logged (z_t, c_t, log q_old), plus
   ``ref_weight * KL(q_phi || q_ref)`` to keep latents where the decoder was
   trained (q_ref: the prior before RL).
@@ -41,6 +43,7 @@ from metadrive_ais.data.asl import find_rollouts, iter_entries
 from metadrive_ais.models.latent_policy import LOG_STD_RANGE, LatentChannel
 
 INCIDENT_METRICS = ("offroad", "collision_any")
+QUERY_PERIOD_US = 500_000  # VaVAM is queried at 2 Hz
 
 
 def rollout_windows(run_dir: Path) -> dict[str, tuple[int, int | None]]:
@@ -112,8 +115,11 @@ def load_queries(logs, windows, adv, policy_version):
             if session not in adv:
                 skipped["no advantage"] += 1
                 continue
+            if not r.get("decision", True):
+                skipped["held latent"] += 1
+                continue
             start, incident = windows[session]
-            if r["time_us"] < start:
+            if r["time_us"] + (r.get("hold", 1) - 1) * QUERY_PERIOD_US < start:
                 skipped["forced replay"] += 1
                 continue
             if incident is not None and r["time_us"] > incident:
