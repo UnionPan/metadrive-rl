@@ -21,9 +21,10 @@ latents for 4 queries).
 | 7 | 64 | 0 | 0.182 | 10/16 | 133 | 4 | 0.0271 | 0.045 | 0.95 |
 
 Offline over all iterations (decision points, 304 rollouts with group
-signal): no latent direction correlates with the advantage (max |r| = 0.104,
-p = 0.24). Larger held perturbations tend to score worse (corr(|c|, A) = −0.11,
-p = 0.057); per-step v3 shows neither (+0.05, p = 0.45).
+signal, credit restricted to AlpaSim's scored window): no latent direction
+correlates with the advantage (max |r| = 0.125, permutation p = 0.11). Larger
+held perturbations score worse (corr(|c|, A) = −0.17, p = 0.004). Per-step v3
+shows neither (max |r| = 0.089, p = 0.44; size +0.005, p = 0.93).
 
 ## Evaluation (val_cl, M1 protocol, 2 rollouts)
 

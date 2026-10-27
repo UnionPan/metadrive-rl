@@ -583,3 +583,12 @@ iterations, decision points, per-iteration scene-group advantages). One offline
 weighted maximum-likelihood fit of q_phi(c | z) from the v0 prior, weights
 exp(A) clipped at 20, 300 full-batch Adam steps at lr 1e-3. Evaluation: mean
 policy on val_cl (M1 protocol), paired vs B0b\* and vs v3b v8 mean.
+
+**Credit-window correction (latent_rl):** AlpaSim scores a rollout from control
+start for `duration_frac_20s · 20 s`, which ends at the first incident or
+earlier where the scene's metrics stop being valid (e.g. 12.5 s while the video
+runs 16 s). `latent_rl` had ended credit at the first raw offroad/collision in
+`metrics.parquet`, which can fall after the scored window. It now uses the
+scored window. Rechecked offline: v3 no signal (max |r| 0.089, p 0.44); v3b
+no direction (max |r| 0.125, p 0.11), but perturbation size hurts (r = −0.17,
+p = 0.004). The v3/v3b conclusions stand.

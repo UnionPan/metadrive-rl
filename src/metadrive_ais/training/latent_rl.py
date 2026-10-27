@@ -12,11 +12,14 @@ an environment input; its density is not optimised.
   batch (group baseline), divided by the batch standard deviation of those
   differences. Scenes whose rollouts all score the same contribute nothing;
   they are counted.
-- Credit: every latent decision whose effect falls after the forced replay and
-  up to the first incident (offroad or any collision), where AlpaSim stops
-  scoring. With a held latent (``hold`` = k queries), only decision queries
-  carry a log-probability; a decision counts if its hold window
-  [t, t + (k - 1) * 0.5 s] overlaps that interval.
+- Credit: every latent decision whose effect falls inside AlpaSim's scored
+  window: from control start (the end of the forced replay, where
+  ``eval_relevant`` turns on) for ``duration_frac_20s * 20 s``. The window ends
+  at the first offroad or collision, or earlier where the scene's metrics stop
+  being valid, and later events do not change the score. With a held latent
+  (``hold`` = k queries), only decision queries carry a log-probability; a
+  decision counts if its hold window [t, t + (k - 1) * 0.5 s] overlaps the
+  scored window.
 - Update: clipped PPO on the logged (z_t, c_t, log q_old), plus
   ``ref_weight * KL(q_phi || q_ref)`` to keep latents where the decoder was
   trained (q_ref: the prior before RL).
@@ -36,18 +39,21 @@ from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
-import polars as pl
 import torch
 
 from metadrive_ais.data.asl import find_rollouts, iter_entries
 from metadrive_ais.models.latent_policy import LOG_STD_RANGE, LatentChannel
 
-INCIDENT_METRICS = ("offroad", "collision_any")
 QUERY_PERIOD_US = 500_000  # VaVAM is queried at 2 Hz
 
 
-def rollout_windows(run_dir: Path) -> dict[str, tuple[int, int | None]]:
-    """session uuid -> (control start, first incident or None), in microseconds."""
+def rollout_windows(run_dir: Path) -> dict[str, tuple[int, int]]:
+    """session uuid -> AlpaSim's scored window (control start, end), in microseconds."""
+    scored_s = {}
+    for f in sorted(run_dir.glob("**/aggregate/results-summary.json")):
+        for r in json.loads(f.read_text())["rollouts"]:
+            if "error" not in r["metrics"]:
+                scored_s[r["rollout_id"]] = 20.0 * float(r["metrics"]["duration_frac_20s"])
     out = {}
     for path in find_rollouts(run_dir):
         for e in iter_entries(path):
@@ -58,15 +64,8 @@ def rollout_windows(run_dir: Path) -> dict[str, tuple[int, int | None]]:
                 break
         else:
             continue
-        incident = None
-        metrics_file = path.parent / "metrics.parquet"
-        if metrics_file.exists():
-            hits = pl.read_parquet(metrics_file).filter(
-                pl.col("name").is_in(INCIDENT_METRICS) & pl.col("valid") & (pl.col("values") > 0)
-            )
-            if len(hits):
-                incident = int(hits["timestamps_us"].min())
-        out[session] = (start, incident)
+        if session in scored_s:
+            out[session] = (start, start + int(scored_s[session] * 1e6))
     return out
 
 
@@ -118,12 +117,12 @@ def load_queries(logs, windows, adv, policy_version):
             if not r.get("decision", True):
                 skipped["held latent"] += 1
                 continue
-            start, incident = windows[session]
+            start, end = windows[session]
             if r["time_us"] + (r.get("hold", 1) - 1) * QUERY_PERIOD_US < start:
                 skipped["forced replay"] += 1
                 continue
-            if incident is not None and r["time_us"] > incident:
-                skipped["after incident"] += 1
+            if r["time_us"] > end:
+                skipped["after scored window"] += 1
                 continue
             z.append(r["z"]), c.append(r["c"]), logp.append(r["logp"]), a.append(adv[session])
             sessions.add(session)
