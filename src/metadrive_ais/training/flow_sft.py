@@ -17,11 +17,16 @@ Usage:
     python -m metadrive_ais.training.flow_sft --data data/episodes/<expert>/steps.parquet \\
         --memory gru --out runs/sft/<name> [--ais-weight 0.5] [--epochs 20]
         [--latent-dim 4 --kl-weight 0.01]  # M5a latent action channel
+        [--latent-objective hindsight --prior-weight 0.1]
 
 With ``--latent-dim``, a latent action ``c_t`` adds ``W_c c_t`` to the adapter
 residual (``metadrive_ais.models.latent_policy``). Training samples ``c_t`` from
 the posterior given the human future and adds ``kl_weight * KL(posterior ||
 prior)``; evaluation and deployment sample from the prior, the policy RL trains.
+``--latent-objective hindsight`` avoids posterior collapse: training uses the
+posterior *mean* (no noise, no KL), so the decoder must learn to steer from it,
+and the prior is fitted by maximum likelihood to the detached posterior means
+(``prior_weight * -log q(c_post | z)``).
 """
 
 from __future__ import annotations
@@ -125,7 +130,10 @@ class Trainer:
         self.conditioner = attach_conditioning(vam)
 
     def latent_residual(self, z, future, mode: str, generator=None):
-        """(W_c c, KL(posterior || prior) per step) for states z [..., S], futures [..., 6, 2].
+        """(W_c c, {kl, prior_nll} per step) for states z [..., S], futures [..., 6, 2].
+
+        ``kl`` is KL(posterior || prior); ``prior_nll`` is -log q(posterior mean | z)
+        with the posterior mean detached (the hindsight objective's prior fit).
 
         mode: ``posterior`` (reparameterised sample), ``posterior_mean``, ``prior``
         (sample, the deployed policy) or ``prior_mean``.
@@ -143,8 +151,11 @@ class Trainer:
             c = prior.mean
         else:
             raise ValueError(mode)
-        kl = torch.distributions.kl_divergence(post, prior).sum(-1)
-        return self.latent.decoder(c), kl
+        terms = {
+            "kl": torch.distributions.kl_divergence(post, prior).sum(-1),
+            "prior_nll": -prior.log_prob(post.mean.detach()).sum(-1),
+        }
+        return self.latent.decoder(c), terms
 
     def states(self, episodes: list[ExpertEpisode]) -> torch.Tensor:
         batch = collate([e.seq for e in episodes], self.device)
@@ -175,10 +186,10 @@ class Trainer:
         cmd = torch.stack(cmd).to(self.device)
         act = torch.stack(act).to(self.device)
         t = t_values if t_values is not None else torch.rand(len(wins), CONTEXT, device=self.device)
-        delta, kl = torch.stack(delta), None
+        delta, terms = torch.stack(delta), {}
         if self.latent is not None and not gate_zero:
             zw = torch.stack([z[pos[i], end - CONTEXT + 1 : end + 1] for i, end in wins])
-            extra, kl = self.latent_residual(zw, act, latent_mode, latent_generator)
+            extra, terms = self.latent_residual(zw, act, latent_mode, latent_generator)
             delta = delta + extra
         self.conditioner.delta = None if gate_zero else delta
         try:
@@ -189,8 +200,7 @@ class Trainer:
         aux = {}
         if self.heads is not None:
             aux = ais_losses(self.heads(z, seq_batch["action"]), seq_batch, self.heads.embed_norm)
-        if kl is not None:
-            aux["kl"] = kl.mean()
+        aux.update({k: v.mean() for k, v in terms.items()})
         return loss.float(), aux
 
     @torch.no_grad()
@@ -289,7 +299,7 @@ def evaluate_latent(trainer: Trainer, episodes, wins, batch: int, samples: int =
     over ``samples`` prior latents with VaVAM's flow noise held fixed.
     """
     g = torch.Generator(device=trainer.device).manual_seed(0)
-    flow, kl, preds, truth = [], [], [], []
+    flow, kl, nll, preds, truth = [], [], [], [], []
     for k in range(0, len(wins), batch):
         w = wins[k : k + batch]
         t = torch.rand(len(w), CONTEXT, generator=g, device=trainer.device)
@@ -297,6 +307,7 @@ def evaluate_latent(trainer: Trainer, episodes, wins, batch: int, samples: int =
         loss, aux = trainer.flow_loss(episodes, w, t, latent_mode="posterior_mean")
         flow.append(loss.item() * len(w))
         kl.append(aux["kl"].item() * len(w))
+        nll.append(aux["prior_nll"].item() * len(w))
         preds.append(trainer.sample(episodes, w, seed=k, latent_mode="posterior_mean"))
         truth.append(np.stack([episodes[i].future[end] for i, end in w]))
     sub = wins[: 8 * batch]
@@ -315,6 +326,7 @@ def evaluate_latent(trainer: Trainer, episodes, wins, batch: int, samples: int =
     return {
         "flow_loss_posterior": sum(flow) / len(wins),
         "kl": sum(kl) / len(wins),
+        "prior_nll": sum(nll) / len(wins),
         "open_loop_posterior": open_loop_report(np.concatenate(preds), np.concatenate(truth)),
         "latent_spread_final_m": float(np.sqrt((dev**2).sum(-1).mean(0)).mean()),
         "latent_spread_longitudinal_m": float(dev[..., 0].std(0).mean()),
@@ -338,6 +350,11 @@ def main() -> None:
     )
     parser.add_argument("--latent-dim", type=int, default=0, help="M5a latent action channel")
     parser.add_argument("--kl-weight", type=float, default=0.01)
+    parser.add_argument("--latent-objective", choices=("cvae", "hindsight"), default="cvae")
+    parser.add_argument("--prior-weight", type=float, default=0.1, help="hindsight prior fit")
+    parser.add_argument(
+        "--latent-encoder", choices=("mlp", "pca"), default="mlp", help="posterior/encoder"
+    )
     parser.add_argument("--holdout-scenes", type=int, default=12)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch", type=int, default=8)
@@ -368,9 +385,14 @@ def main() -> None:
     memory.requires_grad_(not args.freeze_memory)
     adapter = GatedAdapter(memory.state_dim).to(device)
     heads = AISHeads(memory.state_dim, dim).to(device) if args.ais_weight > 0 else None
-    latent = (
-        LatentChannel(memory.state_dim, args.latent_dim).to(device) if args.latent_dim else None
-    )
+    latent = None
+    if args.latent_dim:
+        latent = LatentChannel(memory.state_dim, args.latent_dim, encoder=args.latent_encoder)
+        if args.latent_encoder == "pca":
+            futures = torch.from_numpy(np.concatenate([e.future[e.has_future] for e in train_eps]))
+            explained = latent.fit_pca(futures)
+            print(f"PCA latent: explained variance {explained.numpy().round(3).tolist()}")
+        latent = latent.to(device)
     trainer = Trainer(vam, memory, adapter, heads, device, latent)
     params = [
         p
@@ -395,11 +417,13 @@ def main() -> None:
         order = rng.permutation(len(train_w))
         for k in range(0, len(order), args.batch):
             w = [train_w[j] for j in order[k : k + args.batch]]
-            loss, aux = trainer.flow_loss(train_eps, w)
-            kl = aux.pop("kl", None)
+            hindsight = args.latent_objective == "hindsight"
+            mode = "posterior_mean" if hindsight else "posterior"
+            loss, aux = trainer.flow_loss(train_eps, w, latent_mode=mode)
+            kl, nll = aux.pop("kl", None), aux.pop("prior_nll", None)
             total = loss + args.ais_weight * sum(aux.values()) if aux else loss
             if kl is not None:
-                total = total + args.kl_weight * kl
+                total = total + (args.prior_weight * nll if hindsight else args.kl_weight * kl)
             opt.zero_grad()
             scaler.scale(total).backward()
             scaler.unscale_(opt)

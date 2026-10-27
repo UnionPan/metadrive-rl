@@ -29,3 +29,20 @@ def test_posterior_uses_the_future_and_kl_is_nonnegative():
     kl = torch.distributions.kl_divergence(post, ch.prior(z)).sum(-1)
     assert kl.shape == (4, 2) and (kl >= 0).all()
     assert ch.decoder(post.rsample()).shape == (4, 2, 8)
+
+
+def test_pca_encoder_gives_standardized_components_and_ignores_z():
+    torch.manual_seed(0)
+    t = torch.arange(1, 7, dtype=torch.float32)
+    speed, curve = torch.rand(500, 1) * 15, torch.randn(500, 1) * 0.5
+    futures = torch.stack([speed * 0.5 * t, curve * t**2], -1)  # [N, 6, 2]
+    ch = LatentChannel(state_dim=16, latent_dim=2, token_dim=8, encoder="pca")
+    explained = ch.fit_pca(futures)
+    assert explained.sum() > 0.99  # two factors generate the data
+    c = ch.posterior(torch.randn(500, 16), futures).mean
+    assert torch.allclose(c.mean(0), torch.zeros(2), atol=1e-4)
+    assert torch.allclose(c.std(0), torch.ones(2), atol=1e-3)
+    other_z = ch.posterior(torch.randn(500, 16), futures).mean
+    assert torch.equal(c, other_z)
+    assert ch.config["encoder"] == "pca"
+    assert "encoder" not in LatentChannel(16, 2, 8).config  # loads older bundles
