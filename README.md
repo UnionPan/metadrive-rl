@@ -14,6 +14,9 @@ executed actions make **VaVAM-B** a better closed-loop driver than its own
 - Memory and the AIS objective add nothing measurable.
 - Latent-policy RL (PPO on exact log-probs through AlpaSim) did not improve on
   stock VaVAM within 512 rollouts per run.
+- Memory-dependent tests (speed-change windows, history length, memory reset)
+  show no benefit from memory; in closed loop, long history hurts.
+- The VaVAM-AIS policy also trains through AlpaGym/Cosmos-RL (M5b).
 
 Every comparison was declared before running (`docs/PROGRESS.md`); negative
 results are kept.
@@ -34,7 +37,7 @@ The earlier MLP-over-planner pipeline is preserved under the Git tag
 | Latent-policy RL (`training/latent_rl.py`, `scripts/latent_rl_loop.sh`) | on-policy PPO over AlpaSim rollouts: scene-group baseline, AlpaSim scored-window credit, KL control, held (option) latents; AWR comparator (`training/latent_awr.py`) |
 | Evaluation (`evaluation/`) | scene-cluster bootstrap, matched scenes, paired differences, abort accounting; forced-replay open-loop error; speed profiles |
 | Alpamayo 1 / 1.5 / 2 Super in AlpaSim | closed loop on Turing: fp16, SDPA, layer-split over 2 GPUs for A2 (`patches/alpasim/0003`) |
-| AlpaGym (M5b) | environment builds, 469 unit tests pass; smoke run blocked on system packages (`redis-server`, cuDNN/NCCL headers) |
+| AlpaGym (M5b) | VaVAM-AIS policy bundle (`src/metadrive_ais/alpagym/`): latent-policy GRPO through Cosmos-RL with AlpaSim and the gsplat renderer. An episode, scoring, an optimizer step (PPO ratio exactly 1 on policy), weight sync and a rerun on the synced weights, plus export back to an AlpaSim bundle (`scripts/alpagym_vavam_smoke.sh`). Prerequisites in user space (redis from conda-forge) |
 
 Demo: `outputs/demo_gallery/` (built by `scripts/make_gallery.py`, index in
 [`docs/demo_gallery.md`](docs/demo_gallery.md)). Side-by-side AlpaSim rollout
