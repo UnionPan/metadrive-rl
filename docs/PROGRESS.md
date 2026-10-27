@@ -488,3 +488,9 @@ any run; the other 48 would need ~77 GB). Same M1 protocol (2 rollouts, CATK,
 4 s replay, route commands, 8 frames, `VAVAM_MUP_SHAPES_DIR`), B0b\* (stock
 VaVAM) vs B1-frame (`runs/ais/m3_cl/frame_s0.bundle.pt`). Primary: paired
 score. Secondary: progress, offroad, at-fault collision. test_cl stays untouched.
+
+**M4 budget check result:** B3 (GRU) at 16 epochs reaches held-out flow
+0.0556 (best epoch 16, still improving ~0.002/epoch), vs 0.069 at 8 epochs and
+0.037 for frame (best epoch 3). Twice the budget does not close the gap: the GRU
+optimises far more slowly but is not shown to be worse in the limit. B4 at 16
+epochs follows (declared rule: B3 moved materially).
