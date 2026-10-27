@@ -462,3 +462,16 @@ spreads plans over the futures that are plausible given z_t. Same gate (spread
 ≥ 0.5 m, posterior flow < prior flow). If the CVAE retry passes after all, it
 stays the declared choice for RL and v2 is reported alongside. If v2 fails,
 latent RL stops here and the report records the negative result.
+
+**M5a v2 stopped at epoch 2 (design bug found); v2b declared (2026-10-27).**
+v2 did not learn (held-out flow 0.0852 at epoch 2; frame was 0.042), and
+the latent residual had no effect on the flow loss. Cause: VaVAM's action
+tokens have norm ~4.2e3. In a direct probe, the 3 s waypoint moves ~0.2 m per
+100 units of residual norm (≈ linear: 0.02 m at 10, 2 m at 1000). The latent
+decoder starts at norm ~6, and Adam's step size grows it only ~0.05 per
+weight per epoch, far from a useful magnitude. The same limit explains the
+CVAE collapse. **v2b** = v2 with the decoder output scaled by 100 and
+zero-initialised (exact parity at the start); `--latent-decoder-scale 100`,
+otherwise identical (hindsight, PCA encoder, latent dim 4, prior weight 0.1,
+frame memory, 8 epochs, seed 0), same gate. In a 40-step check the spread
+grew 0 → 0.10 m and the posterior beat the prior (0.0415 vs 0.0418).

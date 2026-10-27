@@ -355,6 +355,9 @@ def main() -> None:
     parser.add_argument(
         "--latent-encoder", choices=("mlp", "pca"), default="mlp", help="posterior/encoder"
     )
+    parser.add_argument(
+        "--latent-decoder-scale", type=float, default=1.0, help="residual scale (zero-init if != 1)"
+    )
     parser.add_argument("--holdout-scenes", type=int, default=12)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--batch", type=int, default=8)
@@ -387,7 +390,12 @@ def main() -> None:
     heads = AISHeads(memory.state_dim, dim).to(device) if args.ais_weight > 0 else None
     latent = None
     if args.latent_dim:
-        latent = LatentChannel(memory.state_dim, args.latent_dim, encoder=args.latent_encoder)
+        latent = LatentChannel(
+            memory.state_dim,
+            args.latent_dim,
+            encoder=args.latent_encoder,
+            decoder_scale=args.latent_decoder_scale,
+        )
         if args.latent_encoder == "pca":
             futures = torch.from_numpy(np.concatenate([e.future[e.has_future] for e in train_eps]))
             explained = latent.fit_pca(futures)

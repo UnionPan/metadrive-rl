@@ -8,7 +8,11 @@ action ``c_t``:
 - ``LatentPosterior`` p_psi(c | z_t, future): sees the expert's next waypoints
   and is used only while learning the channel (CVAE-style, with the flow loss
   as reconstruction and KL(posterior || prior)).
-- ``LatentDecoder``: ``W_c c`` in the action-token space.
+- ``LatentDecoder``: ``scale * W_c c`` in the action-token space. VaVAM's action
+  tokens have norm ~4e3, and the 3 s waypoint moves ~0.2 m per 100 units of
+  residual norm, so a unit-scale decoder (scale 1) cannot reach a useful
+  magnitude at Adam's step size. Hindsight channels use ``scale=100``, zero
+  initialised.
 - ``PCAPosterior``: an alternative, fixed encoder. The standardized top
   principal components of the expert's next waypoints, fitted on the training
   futures (``LatentChannel.fit_pca``). The decoder sees an informative latent
@@ -84,17 +88,27 @@ class PCAPosterior(nn.Module):
 
 
 class LatentDecoder(nn.Module):
-    def __init__(self, latent_dim: int, token_dim: int = 256):
+    def __init__(
+        self, latent_dim: int, token_dim: int = 256, scale: float = 1.0, zero_init: bool = False
+    ):
         super().__init__()
+        self.scale = scale
         self.proj = nn.Linear(latent_dim, token_dim, bias=False)
+        if zero_init:
+            nn.init.zeros_(self.proj.weight)
 
     def forward(self, c: torch.Tensor) -> torch.Tensor:
-        return self.proj(c)
+        return self.scale * self.proj(c)
 
 
 class LatentChannel(nn.Module):
     def __init__(
-        self, state_dim: int, latent_dim: int = 4, token_dim: int = 256, encoder: str = "mlp"
+        self,
+        state_dim: int,
+        latent_dim: int = 4,
+        token_dim: int = 256,
+        encoder: str = "mlp",
+        decoder_scale: float = 1.0,
     ):
         super().__init__()
         if encoder not in ("mlp", "pca"):
@@ -104,10 +118,15 @@ class LatentChannel(nn.Module):
         self.posterior = (
             PCAPosterior(latent_dim) if encoder == "pca" else LatentPosterior(state_dim, latent_dim)
         )
-        self.decoder = LatentDecoder(latent_dim, token_dim)
+        # A scaled decoder starts at zero (exact parity) and learns from informative latents.
+        self.decoder = LatentDecoder(
+            latent_dim, token_dim, decoder_scale, zero_init=decoder_scale != 1.0
+        )
         self.config = {"state_dim": state_dim, "latent_dim": latent_dim, "token_dim": token_dim}
-        if encoder != "mlp":  # older bundles have no "encoder" key
+        if encoder != "mlp":  # older bundles have neither key
             self.config["encoder"] = encoder
+        if decoder_scale != 1.0:
+            self.config["decoder_scale"] = decoder_scale
 
     def fit_pca(self, futures: torch.Tensor) -> torch.Tensor:
         return self.posterior.fit(futures)
