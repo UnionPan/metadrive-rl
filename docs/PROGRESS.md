@@ -567,3 +567,11 @@ learnable signal. v3b (held latents) is running.
 B3-16 0.056 and frame 0.038 (seed 0 each). Twice the budget keeps the
 ordering frame ≈ stack < GRU ≤ B4. Neither memory nor the AIS objective helps
 the action head on this data and budget.
+
+**M5a v3b result (`reports/m5a_v3b_rl.md`): no improvement over stock VaVAM.**
+Primary: v8 mean policy vs B0b\* −0.025 [−0.209, +0.141]. Held exploration
+is costly (v0 held vs B0b\* −0.21 [−0.41, −0.04], offroad 66%). RL recovered
+part of that (v8 vs v0 held +0.08 [−0.04, +0.23]) by exploring less, not by
+finding a better direction (no directional correlation: max |r| = 0.10,
+p = 0.24; size of perturbation vs advantage r = −0.11, p = 0.057). In this
+channel, stock VaVAM is a local optimum at this budget.
