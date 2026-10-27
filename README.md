@@ -59,7 +59,7 @@ DRIVER_GPU=0 DRIVER_SOURCE=external_renderer ALPASIM_RENDERER_ADDRS='[localhost:
 $PY -m metadrive_ais.evaluation.summarize runs/repro/b0b=B0b
 ```
 
-Verified 2026-10-27: 8 rollouts on 4 val_cl scenes in ~10 min on one GPU
+Verified 2026-10-27: 8 rollouts on 4 val_cl scenes in 8 min on one GPU (plus renderer start-up)
 (score 0.58 [0.21, 0.95] for that draw; CATK traffic is stochastic).
 
 For the AIS driver, use `vavam_ais` with
