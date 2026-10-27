@@ -425,3 +425,16 @@ B4 (frozen AIS GRU) 0.073; stock 0.086. About 90% of the adapter's gain comes
 from the executed motion (speed) that VaVAM-B never sees; DINOv3 adds a little,
 and history nothing. The AIS objective does not help the action head. Caveat:
 the GRUs were still improving at epoch 8 (16-epoch check running).
+
+**M5a amendment before any RL run (2026-10-26), from a plumbing smoke test**
+(1 iteration, 2 train scenes × 2 rollouts, a provisional epoch-2 latent
+checkpoint; not a result). The driver logged 128 draws, and the recomputed
+log-probs matched to 7e-6. Changes:
+- `latent_rl_loop.sh` waited on its renderer and hung after the rollouts; it
+  now waits only on the AlpaSim stacks.
+- PPO lr 3e-4 → **3e-5**: z_t is unnormalised, and a single Adam step at 3e-4
+  moved the prior by approximate KL 0.12. Added early stopping at approximate KL
+  > 0.02 (estimator `mean((r−1) − log r)`).
+- Observed: that checkpoint's prior std sits at the log-std clamp (e¹), so
+  the std gets no gradient. RL can move only the latent means (fixed
+  exploration noise). Reported as `prior_std_at_clamp` in the update stats.

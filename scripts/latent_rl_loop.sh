@@ -51,6 +51,7 @@ for part in np.array_split(pick, parts):
     print(",".join(part))
 EOF
 )
+  STACKS=()
   for i in "${!GPUS[@]}"; do
     (rc=0
      DRIVER_GPU=${GPUS[$i]} DRIVER_SOURCE=external_renderer \
@@ -66,8 +67,9 @@ EOF
         eval.allow_aggregation_with_failed_rollouts=True eval.video.render_video=False \
         > "$IT/stack_$i.log" 2>&1 || rc=$?
      echo "stack_$i exit=$rc" >> "$IT/status") &
+    STACKS+=($!)
   done
-  wait
+  wait "${STACKS[@]}"  # not the renderers, which run for the whole loop
   "$PY" -m metadrive_ais.training.latent_rl --bundle "$OUT/bundle_v$k.pt" \
     --reference "$OUT/bundle_v0.pt" --runs "$IT"/stack_* --logs "$IT"/latent_*.jsonl \
     --out "$OUT/bundle_v$((k + 1)).pt" --seed "$k" | tee "$IT/update.log"

@@ -38,7 +38,7 @@ import polars as pl
 import torch
 
 from metadrive_ais.data.asl import find_rollouts, iter_entries
-from metadrive_ais.models.latent_policy import LatentChannel
+from metadrive_ais.models.latent_policy import LOG_STD_RANGE, LatentChannel
 
 INCIDENT_METRICS = ("offroad", "collision_any")
 
@@ -134,11 +134,15 @@ def ppo_update(
     a: torch.Tensor,
     epochs: int = 4,
     minibatch: int = 256,
-    lr: float = 3e-4,
+    lr: float = 3e-5,
     clip: float = 0.2,
     ref_weight: float = 0.1,
+    target_kl: float = 0.02,
 ) -> list[dict]:
-    """Clipped PPO on the prior's log-probabilities; returns per-epoch diagnostics."""
+    """Clipped PPO on the prior's log-probabilities; returns per-epoch diagnostics.
+
+    Stops after an epoch whose approximate KL(old || new) exceeds ``target_kl``.
+    """
     opt = torch.optim.Adam(latent.prior.parameters(), lr=lr)
     history = []
     for epoch in range(epochs):
@@ -156,19 +160,28 @@ def ppo_update(
             opt.step()
         with torch.no_grad():
             dist = latent.prior(z)
-            ratio = (dist.log_prob(c).sum(-1) - logp_old).exp()
+            logp_new = dist.log_prob(c).sum(-1)
+            ratio = (logp_new - logp_old).exp()
+            approx_kl = float(((ratio - 1) - ratio.log()).mean())  # >= 0, low variance
             history.append(
                 {
                     "epoch": epoch + 1,
+                    "approx_kl": approx_kl,
                     "ratio_mean": float(ratio.mean()),
                     "clip_fraction": float(((ratio - 1).abs() > clip).float().mean()),
                     "kl_ref": float(
                         torch.distributions.kl_divergence(dist, reference.prior(z)).sum(-1).mean()
                     ),
                     "prior_std_mean": float(dist.stddev.mean()),
+                    # Hard-clamped log-std: no gradient for these dimensions.
+                    "prior_std_at_clamp": float(
+                        (dist.stddev.log() >= LOG_STD_RANGE[1] - 1e-6).float().mean()
+                    ),
                     "surrogate": float((ratio * a).mean()),
                 }
             )
+        if approx_kl > target_kl:
+            break
     return history
 
 
@@ -183,9 +196,11 @@ def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--minibatch", type=int, default=256)
-    parser.add_argument("--lr", type=float, default=3e-4)
+    # z_t is unnormalised: one Adam step at 3e-4 moved the prior by KL ~0.1 (smoke test).
+    parser.add_argument("--lr", type=float, default=3e-5)
     parser.add_argument("--clip", type=float, default=0.2)
     parser.add_argument("--ref-weight", type=float, default=0.1)
+    parser.add_argument("--target-kl", type=float, default=0.02)
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
 
@@ -228,6 +243,7 @@ def main() -> None:
         lr=args.lr,
         clip=args.clip,
         ref_weight=args.ref_weight,
+        target_kl=args.target_kl,
     )
 
     bundle["latent"]["state_dict"] = latent.state_dict()
