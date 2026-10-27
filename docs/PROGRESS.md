@@ -480,3 +480,11 @@ grew 0 → 0.10 m and the posterior beat the prior (0.0415 vs 0.0418).
 (`--kl-weight 0.001 --latent-dim 8`), best epoch 8: spread 0.056 m, posterior
 flow 0.0426 vs prior 0.0428, KL 0.17. Both declared CVAE configurations are
 negative results with the same cause (decoder scale vs. token norm, above).
+
+**M3 confirmation on eval_big-48 (declared before running, 2026-10-27):**
+the val_cl null (frame adapter vs B0b\*) has CIs of ±0.13–0.2. Rerun on the 48
+eval_big scenes whose artifacts are on disk (selected by availability, before
+any run; the other 48 would need ~77 GB). Same M1 protocol (2 rollouts, CATK,
+4 s replay, route commands, 8 frames, `VAVAM_MUP_SHAPES_DIR`), B0b\* (stock
+VaVAM) vs B1-frame (`runs/ais/m3_cl/frame_s0.bundle.pt`). Primary: paired
+score. Secondary: progress, offroad, at-fault collision. test_cl stays untouched.
