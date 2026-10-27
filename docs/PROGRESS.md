@@ -608,14 +608,14 @@ negative result.
   `~/ext/tools-env`), plus `cudnn.h`/`nccl.h` from the AlpaGym venv's NVIDIA wheels
   via `CPATH`. Only the pre-flight script's system-path check still fails.
 - Upstream smoke run (`alpamayo_1_5_local_2gpu_smoke`): one unsharded policy
-  replica (`dp_shard_size: 1`) does full-parameter GRPO on the 10B Alpamayo
-  1.5. The AlpaGym policy and trainer freeze nothing. Weights, gradients and
-  Adam state need >100 GB, well beyond one 48 GB card, and bf16 is emulated on
-  Turing. AlpaGym's AlpaSim launch would also need our gsplat renderer instead
-  of NRE. Not attempted.
-- VaVAM integration (the M5b deliverable) would fit (319M + 38M parameters) but
-  is a policy package, rollout transport and trainer for the same latent policy
-  that M5a found no gain with. Left as the remaining engineering stretch.
+  replica (`dp_shard_size: 1`). **Correction (same day):** the recipe's Cosmos
+  wrapper (`alpamayo1_x_rl/models/expert_model/cosmos_wrapper.py`) freezes the
+  language model and vision tower, so only the action expert trains. Memory is
+  ~20 GB of frozen bf16 weights plus the expert and its optimizer, which may fit
+  in 48 GB; bf16 is emulated (slow). AlpaGym's AlpaSim launch would need our
+  gsplat renderer instead of NRE.
+- VaVAM integration (the M5b deliverable) fits easily (319M + 38M parameters);
+  started below.
 
 ## M4 — memory-dependent scenario tests (guideline §6; declared before running, 2026-10-27)
 
