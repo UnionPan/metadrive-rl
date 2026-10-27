@@ -519,3 +519,22 @@ scale 150 / 300 / 600 → spread 0.47 / 0.93 / 1.69 m at 3 s; held-out ADE
   **mean** policy (`VAVAM_AIS_LATENT=mean`) vs B0b\*. Secondary: v8 sampled vs
   v0 sampled (the RL effect at equal exploration noise), and v0 sampled vs
   B0b\* (the cost of exploration noise).
+
+**M5a v2b result: fails the gate on spread.** `runs/sft/m5a_v2b_pca_s0`, best
+epoch 8: spread 0.138 m at 3 s (lateral 0.038, longitudinal 0.130; gate ≥ 0.5),
+posterior flow 0.0646 < prior 0.0693 (passes), open-loop ADE 2.85 (posterior)
+vs 2.99 m (prior). With the residual scale fixed, the hindsight channel carries
+real information about the future. Its maximum-likelihood prior, though, is
+confident (held-out NLL rising), so prior samples barely explore, and almost
+not laterally, where VaVAM fails. As declared, RL on a learned latent stops here.
+The separately declared v3 (fixed random channel on stock VaVAM) is the RL arm.
+
+Summary of the latent-channel attempts (all frame memory, 8 epochs):
+
+| channel | spread at 3 s | posterior vs prior flow | verdict |
+|---|---|---|---|
+| CVAE, KL 0.01, d=4 | 0.056 m | 0.0466 vs 0.0468 | fail (collapse) |
+| CVAE, KL 0.001, d=8 | 0.056 m | 0.0426 vs 0.0428 | fail (collapse) |
+| hindsight PCA, decoder ×1 | stopped at epoch 2 (no learning) | — | design bug |
+| hindsight PCA, decoder ×100 | 0.138 m | 0.0646 vs 0.0693 | fail (prior too narrow) |
+| fixed random ×300 (v3, RL only) | 0.93 m (probe) | n/a | passes; RL running |
