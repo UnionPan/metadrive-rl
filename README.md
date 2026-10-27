@@ -46,17 +46,21 @@ scenes.
 ```bash
 scripts/setup_alpasim.sh                 # AlpaSim at the pinned commit + patches
 scripts/setup_render_env.sh              # renderer conda env (metadrive-render)
+PY=$HOME/ext/alpasim/.venv/bin/python    # AlpaSim venv, with this package installed (pip install -e .)
 export VAVAM_MUP_SHAPES_DIR=$HOME/ext/alpasim/data/drivers/vavam/mup_shapes
 scripts/serve_gsplat_renderer.sh 46110 0 &
-SCENES=$(python -c "import yaml; print(','.join(s['scene_id'] for s in \
+SCENES=$($PY -c "import yaml; print(','.join(s['scene_id'] for s in \
   yaml.safe_load(open('configs/evaluation/splits.yaml'))['val_cl'][:4]))")
 DRIVER_GPU=0 DRIVER_SOURCE=external_renderer ALPASIM_RENDERER_ADDRS='[localhost:46110]' \
   DRIVER_OVERRIDES="inference.context_length=8" \
   scripts/run_alpasim.sh runs/repro/b0b vavam "scenes.scene_ids=[$SCENES]" \
   runtime.simulation_config.n_rollouts=2 trafficsim=catk \
   runtime.simulation_config.force_gt_duration_us=4000000
-python -m metadrive_ais.evaluation.summarize runs/repro/b0b=B0b
+$PY -m metadrive_ais.evaluation.summarize runs/repro/b0b=B0b
 ```
+
+Verified 2026-10-27: 8 rollouts on 4 val_cl scenes in ~10 min on one GPU
+(score 0.58 [0.21, 0.95] for that draw; CATK traffic is stochastic).
 
 For the AIS driver, use `vavam_ais` with
 `DRIVER_OVERRIDES="model.checkpoint_path=<bundle.pt> inference.context_length=8"`.
