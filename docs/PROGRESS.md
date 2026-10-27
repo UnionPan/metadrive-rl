@@ -592,3 +592,12 @@ runs 16 s). `latent_rl` had ended credit at the first raw offroad/collision in
 scored window. Rechecked offline: v3 no signal (max |r| 0.089, p 0.44); v3b
 no direction (max |r| 0.125, p 0.11), but perturbation size hurts (r = −0.17,
 p = 0.004). The v3/v3b conclusions stand.
+
+**M5a AWR comparator result (reward-weighted imitation, not RL):** mean
+policy vs B0b\* −0.093 [−0.278, +0.071], progress −0.07 [−0.145, −0.007]. RL
+v3b v8 (mean) vs AWR: +0.068 [−0.000, +0.15]. On the same 512 rollouts,
+on-policy RL is at least as good as the offline weighted fit, which moved the
+latent means (|mu| 0.13) and drove slightly worse. Neither improves on stock
+VaVAM-B. M5a is complete as specified (valid latent-policy RL, restored
+checkpoints, closed-loop evidence, equal-budget non-RL comparison), with a
+negative result.

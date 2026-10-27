@@ -33,6 +33,7 @@ ran; negative results are kept.
 | Can a learned latent action channel be trained for RL? (M5a) | Not with the gate met: the CVAE collapses (2 configs), and the hindsight PCA channel carries information but its prior explores only 0.14 m | `docs/PROGRESS.md` (M5a) |
 | Does closed-loop RL through a latent residual improve stock VaVAM? (M5a v3) | No: v8 mean policy vs B0b\* +0.014 [−0.108, +0.13]; per-step exploration shows no learnable signal (max \|r\| = 0.09, p = 0.39) | `reports/m5a_v3_rl.md` |
 | Same with temporally persistent exploration (v3b) | No: v8 mean policy vs B0b\* −0.025 [−0.21, +0.14]; held perturbations hurt (v0 held −0.21), and RL only learned to perturb less | `reports/m5a_v3b_rl.md` |
+| Equal-budget non-RL comparator (AWR on the v3b rollouts) | Worse than stock (−0.09 [−0.28, +0.07]); RL ≥ AWR (+0.07 [−0.00, +0.15]) | `reports/m5a_v3b_rl.md` |
 
 ## What works (reusable)
 
@@ -44,6 +45,8 @@ ran; negative results are kept.
   outcomes), DINOv3/VQ caches, flow-matching SFT through the frozen expert,
   scene-cluster bootstrap evaluation with paired comparisons and abort
   accounting, and an on-policy PPO loop over AlpaSim rollouts.
+
+Failure taxonomy: `reports/failure_taxonomy.md`. Demo gallery: `docs/demo_gallery.md`.
 
 ## Open directions
 

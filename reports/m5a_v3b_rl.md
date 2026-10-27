@@ -73,3 +73,17 @@ Paired v0-held − B0b* over 16 matched scenes:
   channel aligned with the failure (lateral position relative to the route) or
   a denser, lateral-aware reward. A blind random residual of this budget does
   not find one.
+
+## Equal-budget non-RL comparator (AWR on the same rollouts)
+
+`training/latent_awr.py`: one offline exp(A)-weighted maximum-likelihood fit of
+the prior on all 512 v3b rollouts (reward-weighted imitation, not RL), evaluated
+as a mean policy on val_cl (`runs/rl/awr_v3b/`):
+
+| comparison | paired score | progress |
+|---|---|---|
+| AWR mean − B0b\* | −0.093 [−0.278, +0.071] | −0.072 [−0.145, −0.007] |
+| RL v8 mean − AWR mean | +0.068 [−0.000, +0.150] | +0.029 [−0.039, +0.109] |
+
+RL is at least as good as the equal-budget offline fit, and neither beats stock
+VaVAM-B.
