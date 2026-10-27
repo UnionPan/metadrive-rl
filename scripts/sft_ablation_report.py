@@ -1,12 +1,14 @@
 """Summarise flow-SFT runs (runs/sft/*/summary.json) for the memory ablation.
 
 Each run contributes its best held-out epoch (lowest flow loss); epoch 0 is the
-zero-gate stock model, identical across runs.
+zero-gate stock model, identical across runs. Runs are grouped by directory name
+without the seed suffix (``abl_gru_s0`` and ``abl_gru_s1`` -> ``abl_gru``).
 
 Usage: python scripts/sft_ablation_report.py runs/sft/abl_frame_s0 runs/sft/abl_gru_s0 ...
 """
 
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -27,7 +29,8 @@ for run in map(Path, sys.argv[1:]):
         continue
     s = json.loads(f.read_text())
     stock = s["history"][0]
-    rows[s["args"]["memory"]].append(min(s["history"][1:], key=lambda h: h["flow_loss"]))
+    group = re.sub(r"_s\d+$", "", run.name)
+    rows[group].append(min(s["history"][1:], key=lambda h: h["flow_loss"]))
 
 z = stock["open_loop_zero_gate"]
 print(
@@ -36,9 +39,9 @@ print(
     f"longitudinal median {z.get('longitudinal_final_median_m', float('nan')):+.2f} m\n"
 )
 columns = ["held-out flow", "ADE m", "FDE m", "lateral med. m", "longitudinal med. m", "best epoch"]
-print("| memory | runs | " + " | ".join(columns) + " |")
+print("| variant | runs | " + " | ".join(columns) + " |")
 print("|---|---|---|---|---|---|---|---|")
-for memory, best in rows.items():
+for variant, best in rows.items():
     ol = [b["open_loop"] for b in best]
     cells = [
         agg(b["flow_loss"] for b in best),
@@ -48,4 +51,4 @@ for memory, best in rows.items():
         agg(o.get("longitudinal_final_median_m", float("nan")) for o in ol),
         agg(b["epoch"] for b in best),
     ]
-    print(f"| {memory} | {len(best)} | " + " | ".join(cells) + " |")
+    print(f"| {variant} | {len(best)} | " + " | ".join(cells) + " |")

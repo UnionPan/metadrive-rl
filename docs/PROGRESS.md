@@ -418,3 +418,10 @@ were still improving at epoch 8 (best epoch 7–8), while frame/stack peaked
 at epoch 2–3. B3 is rerun for 16 epochs, seed 0, otherwise the same protocol.
 If it approaches frame's held-out flow (0.037), the 8-epoch memory result is a
 budget artifact. B4 at 16 epochs follows if B3 moves materially.
+
+**M4 open-loop ablation result (`reports/m4_open_loop_ablation.md`, 2 seeds each):**
+held-out flow loss: motion-only 0.041, frame 0.037, stack 0.037, GRU 0.069,
+B4 (frozen AIS GRU) 0.073; stock 0.086. About 90% of the adapter's gain comes
+from the executed motion (speed) that VaVAM-B never sees; DINOv3 adds a little,
+and history nothing. The AIS objective does not help the action head. Caveat:
+the GRUs were still improving at epoch 8 (16-epoch check running).
