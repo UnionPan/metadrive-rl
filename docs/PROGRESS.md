@@ -691,3 +691,18 @@ Run (`scripts/alpagym_vavam_smoke.sh`, RL v0 bundle, train scene `01d503d4`,
     batch size (AlpaSim's driver too).
 - The round-2 rewards are much worse after 16 minibatch updates on one scene.
   That is a smoke run, not an RL result; M5a covers the RL question.
+
+**M4 memory-dependent tests result (`reports/m4_memory_scenarios.md`): no
+memory benefit where memory should matter.**
+- T1: the GRU-16 adapter is flat in history length (0.0556–0.0567 held-out
+  flow for k = 1 … all). B4 gains a little from k = 1 → 2 (0.0630 → 0.0604) but
+  stays far behind frame (0.038).
+- T2: on decelerating / accelerating windows GRU − frame flow is +0.004 (CI
+  includes 0), and ADE is worse when accelerating (+0.35 m [+0.09, +0.49]).
+- T3 (closed loop): never-reset vs reset-every-query −0.093 [−0.262, +0.055]
+  (declared primary, null). Never vs reset-every-2 s −0.105 [−0.199, −0.026]:
+  long history hurts.
+- T4: the AIS heads on informative CATK steps give frame ≥ GRU (offroad AUROC
+  0.83 vs 0.79, better NLL).
+- Low power (35 / 312 windows, 108 steps). Occlusion, merge and reactivity
+  cases have no supported scenario control and were not built.

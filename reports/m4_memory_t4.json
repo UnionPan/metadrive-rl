@@ -1,0 +1,275 @@
+{
+ "threshold_mps": 3.0,
+ "models": {
+  "frame_s0": {
+   "informative": {
+    "collision": {
+     "auroc": 0.3333333333333333,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.8252688172043011,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.13124747574329376,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.8223832831325302,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.77986139421117,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.1672573834657669,
+    "steps": 719
+   }
+  },
+  "frame_s1": {
+   "informative": {
+    "collision": {
+     "auroc": 0.2828282828282828,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.8293010752688172,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.13651956617832184,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.5865022590361446,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.6109525750781356,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.1636255979537964,
+    "steps": 719
+   }
+  },
+  "frame_s2": {
+   "informative": {
+    "collision": {
+     "auroc": 0.40404040404040403,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.8239247311827957,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.1387941688299179,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.8253012048192772,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.7547221089821987,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.15949596464633942,
+    "steps": 719
+   }
+  },
+  "stack_s0": {
+   "informative": {
+    "collision": {
+     "auroc": 0.40404040404040403,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.7002688172043011,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.11418777704238892,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.7045368975903614,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.738143769533904,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.1366957128047943,
+    "steps": 719
+   }
+  },
+  "stack_s1": {
+   "informative": {
+    "collision": {
+     "auroc": 0.24242424242424243,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.7580645161290323,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.12438870221376419,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.45707831325301207,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.617339312406577,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.13482455909252167,
+    "steps": 719
+   }
+  },
+  "stack_s2": {
+   "informative": {
+    "collision": {
+     "auroc": 0.3484848484848485,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.6854838709677419,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.12535881996154785,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.572289156626506,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.7960320695746704,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.14822015166282654,
+    "steps": 719
+   }
+  },
+  "gru_s0": {
+   "informative": {
+    "collision": {
+     "auroc": 0.41919191919191917,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.821236559139785,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.10128623992204666,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.8069465361445783,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.6848756624541378,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.15127617120742798,
+    "steps": 719
+   }
+  },
+  "gru_s1": {
+   "informative": {
+    "collision": {
+     "auroc": 0.398989898989899,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.7903225806451613,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.11339667439460754,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.7603539156626506,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.7748335371653757,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.15691271424293518,
+    "steps": 719
+   }
+  },
+  "gru_s2": {
+   "informative": {
+    "collision": {
+     "auroc": 0.3484848484848485,
+     "positives": 2,
+     "n": 101
+    },
+    "offroad": {
+     "auroc": 0.7661290322580645,
+     "positives": 8,
+     "n": 101
+    },
+    "next_embed_nll": -0.13834428787231445,
+    "steps": 108
+   },
+   "rest": {
+    "collision": {
+     "auroc": 0.6268825301204819,
+     "positives": 16,
+     "n": 680
+    },
+    "offroad": {
+     "auroc": 0.6036146215518413,
+     "positives": 11,
+     "n": 680
+    },
+    "next_embed_nll": -0.15453386306762695,
+    "steps": 719
+   }
+  }
+ }
+}

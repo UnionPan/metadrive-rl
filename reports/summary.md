@@ -30,6 +30,7 @@ ran; negative results are kept.
 | Does an adapter on VaVAM's action expert improve imitation? (M3) | Yes, open loop: held-out flow loss 0.086 → 0.037, ADE 3.34 → 2.25 m | `reports/m4_open_loop_ablation.md` |
 | Where does that gain come from? (M4) | ~90% from the executed-motion input (speed), which VaVAM never sees; DINOv3 adds a little; memory (stack, GRU) and the AIS objective (B4) add nothing, also at 2× budget | `reports/m4_open_loop_ablation.md` |
 | Does it drive better? (M3, closed loop) | No. val_cl: +0.005 [−0.14, +0.13]. **eval_big-48: −0.088 [−0.161, −0.023]**, worse than stock B0b\* | `reports/m3_closed_loop.md`, `reports/m3_eval_big48.md` |
+| Does memory help where history should matter? (M4, §6) | No: GRU ≈ or worse than frame on speed-change windows; the GRU ignores its history open loop; long history hurts in closed loop (−0.105 [−0.199, −0.026] vs 2 s) | `reports/m4_memory_scenarios.md` |
 | Can a learned latent action channel be trained for RL? (M5a) | Not with the gate met: the CVAE collapses (2 configs), and the hindsight PCA channel carries information but its prior explores only 0.14 m | `docs/PROGRESS.md` (M5a) |
 | Does closed-loop RL through a latent residual improve stock VaVAM? (M5a v3) | No: v8 mean policy vs B0b\* +0.014 [−0.108, +0.13]; per-step exploration shows no learnable signal (max \|r\| = 0.09, p = 0.39) | `reports/m5a_v3_rl.md` |
 | Same with temporally persistent exploration (v3b) | No: v8 mean policy vs B0b\* −0.025 [−0.21, +0.14]; held perturbations hurt (v0 held −0.21), and RL only learned to perturb less | `reports/m5a_v3b_rl.md` |
@@ -52,9 +53,10 @@ Failure taxonomy: `reports/failure_taxonomy.md`. Demo gallery: `docs/demo_galler
 
 ## Open directions
 
-- **Memory-dependent scenarios** (guideline §6): val_cl scenes are short and
-  rarely need history, so the memory question is not yet tested where it should
-  matter.
+- **Memory-dependent scenarios** (guideline §6): built from what the scenes
+  contain (speed-change windows, history length, memory reset), all negative.
+  Occlusion, merges and traffic-reactivity cases need scenario controls that
+  AlpaSim does not provide.
 - **Offroad is the binding failure**, and it is lateral. Neither imitation of
   human replays nor small-budget RL moved it. Dense lateral or route-following
   rewards, or on-policy corrective data (DAgger-style, from VaVAM's own failure
