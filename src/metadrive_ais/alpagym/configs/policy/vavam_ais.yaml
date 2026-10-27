@@ -1,0 +1,43 @@
+# @package policy
+# VaVAM-AIS latent policy (metadrive_ais.alpagym). AlpaGym's generic session
+# glue (AlpamayoPolicy buffers and selector) is configured for VaVAM-B: one front
+# camera at native 1080x1920 (the bundle applies VaVAM's own resize and crop),
+# 8 context frames at 2 Hz, two ego poses 0.5 s apart (executed motion u_{t-1}),
+# six future waypoints at 2 Hz.
+kind: alpamayo
+
+model:
+  kind: vavam_ais
+  path: ???
+  device: cuda
+  dtype: float16
+  use_cameras:
+    - camera_front_wide_120fov
+  input_size: [1080, 1920]
+  num_context_frames: 8
+  num_historical_waypoints: 2
+  num_future_waypoints: 6
+  step_dt_us: 500000
+  bundle_config:
+    step_dt_s: 0.5
+
+inference:
+  max_batch_size: 8
+  sampling:
+    top_p: 1.0
+    top_k: null
+    temperature: 1.0
+    num_traj_samples: 1
+    num_traj_sets: 1
+    max_generation_length: null
+    # Seeds the latent draw per session step (reproducible rollouts).
+    force_determinism: true
+    retry_on_nonfinite: false
+    diffusion_kwargs:
+      int_method: ode
+      noise_level: 0.0
+      inference_step: 10
+      temperature: null
+  return_trace_for_rl: true
+
+trajectory_selector: identity

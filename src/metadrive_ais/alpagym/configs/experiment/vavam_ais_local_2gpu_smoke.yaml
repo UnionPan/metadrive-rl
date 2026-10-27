@@ -1,0 +1,61 @@
+# @package _global_
+# One VaVAM-AIS episode pair through AlpaGym on this host: AlpaSim from the local
+# patched checkout with the external gsplat sensorsim (no NRE on Turing), VaVAM's
+# camera preset, one GRPO step on the latent prior, weight sync.
+#   policy.model.path: python -m metadrive_ais.alpagym.model <bundle.pt> <dir>
+#   renderer: scripts/serve_gsplat_renderer.sh <port> <gpu>, port in extra_overrides
+
+defaults:
+  - override /policy: vavam_ais
+  - override /topology: local_disaggregated_2gpu
+
+expected_valid_steps: 16
+
+policy:
+  model:
+    path: ???
+
+dataset:
+  scene_ids:
+    - clipgt-01d503d4-449b-46fc-8d78-9085e70d3554
+
+alpasim:
+  repo_path: ${oc.env:HOME}/ext/alpasim
+  repo_url: null
+  repo_ref: null
+  wizard_args:
+    driver: vavam_configs
+    control_timestep_us: 500_000
+    force_gt_duration_us: 4_000_000
+    extra_overrides: >-
+      wizard.run_sim_services=[physics,trafficsim,controller,runtime]
+      wizard.external_services={renderer:[localhost:46300]}
+      runtime.simulation_config.pose_reporting_interval_us=500000
+
+cosmos:
+  mode: disaggregated
+  launch:
+    policy_replicas: 1
+    rollout_replicas: 1
+  policy:
+    parallelism:
+      dp_shard_size: 1
+  train:
+    max_num_steps: 1
+    num_epochs: 1
+    train_batch_per_replica: 1
+    optm_lr: 3.0e-5
+    optm_warmup_steps: 1
+    ckpt:
+      enable_checkpoint: true
+      export_safetensors: true
+    train_policy:
+      mini_batch: 1
+      grpo_optimization_iterations: 1
+      kl_beta: 0.0
+  rollout:
+    n_generation: 2
+    batch_size: 1
+    prefetch_rollout: false
+  logging:
+    experiment_name: vavam_ais_local_2gpu_smoke

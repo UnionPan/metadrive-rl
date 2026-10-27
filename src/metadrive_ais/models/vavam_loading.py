@@ -27,8 +27,9 @@ def load_vavam(
     mup_base_shapes: bool = True,
 ):
     """``VideoActionModelInference`` with (default) or without its muP base shapes."""
-    import alpasim_driver.models.vam_model  # noqa: F401  (registers OmegaConf safe globals)
     from vam.action_expert import VideoActionModelInference
+
+    import metadrive_ais.models.vavam_core  # noqa: F401  (registers OmegaConf safe globals)
 
     ckpt = torch.load(checkpoint, map_location="cpu", weights_only=False)  # trusted release
     config = dict(ckpt["hyper_parameters"]["vam_conf"])

@@ -20,12 +20,22 @@ dev = ["pytest>=8", "ruff>=0.6"]
 [project.entry-points."alpasim.models"]
 vavam_ais = "metadrive_ais.drivers.vavam_ais:VaVAMAISModel"
 
+# AlpaGym (M5b): VaVAM-AIS latent-policy bundle and its Hydra configs.
+[project.entry-points."alpagym.policy_bundles"]
+vavam_ais = "metadrive_ais.alpagym.bundle:get_bundle"
+
+[project.entry-points."alpagym.configs"]
+vavam_ais = "metadrive_ais.alpagym.configs"
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"metadrive_ais.alpagym.configs" = ["**/*.yaml"]
 
 [tool.ruff]
 line-length = 100
