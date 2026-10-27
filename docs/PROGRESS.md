@@ -601,3 +601,18 @@ latent means (|mu| 0.13) and drove slightly worse. Neither improves on stock
 VaVAM-B. M5a is complete as specified (valid latent-policy RL, restored
 checkpoints, closed-loop evidence, equal-budget non-RL comparison), with a
 negative result.
+
+## M5b — AlpaGym feasibility (2026-10-27)
+
+- Host prerequisites without sudo: `redis-server` 8.10 (conda-forge,
+  `~/ext/tools-env`), plus `cudnn.h`/`nccl.h` from the AlpaGym venv's NVIDIA wheels
+  via `CPATH`. Only the pre-flight script's system-path check still fails.
+- Upstream smoke run (`alpamayo_1_5_local_2gpu_smoke`): one unsharded policy
+  replica (`dp_shard_size: 1`) does full-parameter GRPO on the 10B Alpamayo
+  1.5. The AlpaGym policy and trainer freeze nothing. Weights, gradients and
+  Adam state need >100 GB, well beyond one 48 GB card, and bf16 is emulated on
+  Turing. AlpaGym's AlpaSim launch would also need our gsplat renderer instead
+  of NRE. Not attempted.
+- VaVAM integration (the M5b deliverable) would fit (319M + 38M parameters) but
+  is a policy package, rollout transport and trainer for the same latent policy
+  that M5a found no gain with. Left as the remaining engineering stretch.

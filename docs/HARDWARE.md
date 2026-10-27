@@ -12,8 +12,12 @@ Census and measured limits (2026-10-22). See also guideline §8.1.
 - Docker 29.9 + Compose v5.6, uv 0.13.4. No CUDA toolkit in the system;
   a user-space CUDA 12.8 toolkit is at `~/ext/cuda128` (conda), for
   building CUDA extensions (`CUDA_HOME=~/ext/cuda128`).
-- No sudo for the agent. Still missing for AlpaGym's local smoke run:
-  `redis-server`, cuDNN dev headers, NCCL dev headers.
+- No sudo for the agent. AlpaGym's host prerequisites are met in user space
+  (2026-10-27): `redis-server` 8.10 from conda-forge in `~/ext/tools-env`
+  (`PATH=~/ext/tools-env/bin:$PATH`); `cudnn.h` and `nccl.h` ship in the AlpaGym
+  venv's NVIDIA wheels (`CPATH=<venv>/site-packages/nvidia/{cudnn,nccl}/include`).
+  `install/check_env.sh` still reports the headers missing because it only
+  searches system paths.
 
 ## Kernel and precision limits
 
