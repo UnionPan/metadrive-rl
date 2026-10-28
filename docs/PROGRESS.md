@@ -706,3 +706,49 @@ memory benefit where memory should matter.**
   0.83 vs 0.79, better NLL).
 - Low power (35 / 312 windows, 108 steps). Occlusion, merge and reactivity
   cases have no supported scenario control and were not built.
+
+## Diagnostic — does a known-good driver drive in our simulator? (declared before running, 2026-10-28)
+
+**Why.** Stock VaVAM-B passes only 28–44% of val_cl rollouts and leaves the
+road in 44–53% (`reports/m1_corrected_baselines.md`). Every memory and RL
+result was measured on top of that baseline. We do not know whether VaVAM-B is
+the problem (its nuScenes/OpenDV training, or the pinhole camera AlpaSim
+synthesizes for it) or our setup is (the gsplat renderer, which was never
+compared with NVIDIA's NRE output).
+
+**Already measured (metric sanity, not part of this test).** The recorded human
+drive replayed through our simulator (`runs/vavam/m2_collect/train_expert_replay`,
+62 train scenes) passes 0.984 [0.952, 1] with offroad 0.016 [0, 0.048]. The
+maps and scoring do not flag the human path.
+
+**Run.** Alpamayo 1.5 (`nvidia/Alpamayo-1.5-10B`) on AlpaSim's own preset: four
+f-theta cameras at 10 Hz (rendered by gsplat at 576×328), 4-frame context,
+10 Hz control, language navigation, driver skipped during the forced replay;
+fp16 and SDPA (Turing). Everything else is the B0b\* protocol: the 16 val_cl
+scenes, 2 rollouts, CATK, 4 s forced replay,
+`eval.allow_aggregation_with_failed_rollouts`, 20 s rollouts
+(`n_sim_steps=200`; scenes end at 19.5 s, as for VaVAM). Four stacks of four
+scenes, one per GPU (`runs/alpamayo/a15_valcl/launch.sh`).
+
+**Primary.** Alpamayo 1.5 pass rate and offroad rate (scene-cluster bootstrap
+CIs) and the paired score Alpamayo 1.5 − B0b\* over the 16 scenes.
+
+**Decision rule.**
+- Pass rate ≥ 0.75 and offroad ≤ 0.15: the simulator supports competent
+  driving and VaVAM-B is the bottleneck. Memory work moves to a base that
+  drives here.
+- Offroad ≥ 0.35 (VaVAM-like): our renderer or camera path is suspect. First
+  rule out fp16 (fp16 vs bf16 trajectories on captured driver inputs), then
+  compare our renders with the recorded camera frames.
+- Otherwise inconclusive: compare per-scene failures with B0b\* (the same
+  scenes failing for both points at the scenes or the simulator, different
+  scenes at the models).
+
+**Secondary.** Per-scene failure overlap with B0b\*, failure taxonomy, seconds
+per decision and wall time.
+
+**Caveats.** Alpamayo is trained on data from the same fleet and camera rig as
+these scenes, and some public clips may be in its training set, so it is an
+optimistic, in-domain reference. Its cameras are rendered natively (f-theta);
+VaVAM's pinhole camera is a reprojection, so a good Alpamayo result does not
+clear the renderer path VaVAM uses.
