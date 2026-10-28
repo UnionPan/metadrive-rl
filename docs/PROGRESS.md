@@ -752,3 +752,16 @@ these scenes, and some public clips may be in its training set, so it is an
 optimistic, in-domain reference. Its cameras are rendered natively (f-theta);
 VaVAM's pinhole camera is a reprojection, so a good Alpamayo result does not
 clear the renderer path VaVAM uses.
+
+**Amendment before results (2026-10-28, 10:55).** The first attempt
+(`runs/alpamayo/a15_valcl`) was aborted after 15 minutes, with no metrics
+read. Alpamayo 1.5 keeps its VLM and expert weights in bf16 (9.9B of 11.1B
+parameters) whatever dtype the loader requests, so `ALPAMAYO_DTYPE=float16`
+only sets the autocast dtype: matmuls ran in fp16 and overflowed. One shard's
+reasoning sampler hit NaN/inf probabilities (device-side assert) and the stack
+died; other steps may have been degraded silently. The rerun
+(`runs/alpamayo/a15_valcl_fp32`) uses `ALPAMAYO_DTYPE=float32`: bf16 weights as
+shipped, matmuls in fp32 (CUDA autocast to fp32 is active in torch 2.8), so the
+numerics are at least as precise as NVIDIA's bf16 reference. Memory is
+unchanged (~28 GB); a probe ran at ~12.8 s per decision. Everything else is as
+declared, so the fp16 rule-out in the decision rule no longer applies.
